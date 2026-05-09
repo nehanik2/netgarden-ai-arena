@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NETGARDEN // CYBERPUNK ASCII WORLD</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ng:#00ff88;--cy:#00ffff;--mg:#ff00ff;
+  --or:#ff8800;--bg:#030712;--panel:#0a0f1e;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ng);font-family:'Share Tech Mono',monospace;cursor:none}
+
+/* CRT */
+#crt{pointer-events:none;position:fixed;inset:0;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.12)2px,rgba(0,0,0,.12)4px)}
+#crt::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(to bottom,transparent 0%,rgba(0,255,136,.025)50%,transparent 100%);
+  animation:scanline 7s linear infinite;pointer-events:none}
+
+/* Custom cursor */
+#cursor{position:fixed;pointer-events:none;z-index:10000;transform:translate(-50%,-50%);
+  color:var(--cy);font-size:14px;text-shadow:0 0 8px var(--cy)}
+
+canvas{display:block;image-rendering:pixelated}
+
+/* Boot */
+#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;
+  background:var(--bg);transition:opacity .6s ease}
+#boot-window{border:1px solid #1a3a5a;background:rgba(3,7,18,.97);padding:20px 24px;
+  min-height:360px;max-width:480px;width:100%;
+  box-shadow:0 0 40px rgba(0,255,136,.12),0 0 80px rgba(0,255,255,.05)}
+#boot-titlebar{display:flex;align-items:center;gap:6px;margin-bottom:16px;
+  padding-bottom:12px;border-bottom:1px solid #0a1a2a}
+.dot{width:8px;height:8px;border-radius:50%}
+#boot-content{font-size:13px;line-height:1.8}
+.boot-line{animation:fadeIn .08s ease-out both}
+#boot-cursor{animation:blink 1s step-end infinite}
+
+/* HUD panels */
+.panel{position:fixed;z-index:20;background:rgba(3,7,18,.9);
+  border:1px solid #1a2a4a;backdrop-filter:blur(4px);font-size:12px;padding:8px 12px}
+.panel-neon{border-color:#00ff8833;box-shadow:0 0 10px rgba(0,255,136,.08)}
+
+#hud-status{top:12px;left:12px;min-width:190px}
+#hud-controls{bottom:60px;right:12px;font-size:10px}
+#hud-chat-log{left:12px;bottom:52px;width:280px;max-height:140px;overflow-y:auto}
+#hud-bar{bottom:0;left:0;right:0;border-top:1px solid #1a2a4a;
+  display:flex;align-items:center;gap:8px;padding:8px 16px}
+#hud-minimap{top:12px;right:12px;padding:6px}
+#minimap{display:block;border:1px solid #0a1a2a;image-rendering:pixelated}
+#hud-seeds{bottom:60px;left:12px}
+#hud-plant{bottom:100px;left:12px;cursor:pointer}
+#plant-menu{display:none;position:fixed;bottom:145px;left:12px;z-index:25;
+  background:rgba(3,7,18,.95);border:1px solid #00ff8833;
+  padding:8px;width:240px}
+#hud-tile-info{display:none;position:fixed;top:50%;right:155px;
+  transform:translateY(-50%);z-index:20;font-size:10px;
+  background:rgba(3,7,18,.9);border:1px solid #00ffff33;padding:6px 12px}
+
+.label{color:#00ff8866}
+.val-g{color:var(--ng)}
+.val-c{color:var(--cy)}
+.val-m{color:var(--mg)}
+.val-o{color:var(--or)}
+
+#chat-input-wrap{display:none;flex:1}
+#chat-input{background:transparent;border:none;outline:none;color:var(--ng);
+  font-family:'Share Tech Mono',monospace;font-size:13px;caret-color:var(--ng);width:100%}
+#bar-prompt{color:#00ff8888}
+#bar-status{color:#ffffff22;font-size:12px;flex:1}
+#bar-cursor{animation:blink 1s step-end infinite;color:var(--ng)}
+#audio-btn{margin-left:auto;background:transparent;cursor:pointer;
+  border:1px solid #00ff8833;color:#00ff8888;font-family:'Share Tech Mono';
+  font-size:10px;padding:2px 8px}
+
+#chat-log-title{color:#00ff8866;font-size:10px;margin-bottom:4px}
+.chat-msg{font-size:11px;line-height:1.5;animation:fadeIn .2s ease-out}
+.chat-name{color:#00ffff88}
+.chat-sep{color:#ffffff22}
+.chat-text{color:#ffffff99}
+
+.hud-row{display:flex;justify-content:space-between}
+
+/* Plant menu */
+.plant-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px}
+.plant-btn{background:transparent;border:1px solid #1a2a4a;color:#fff;
+  font-family:'Share Tech Mono';font-size:11px;padding:4px 6px;cursor:pointer;
+  text-align:left;display:flex;gap:6px;align-items:center}
+.plant-btn:hover,.plant-btn.active{background:#0a1a0a}
+.plant-sym{font-size:15px}
+.plant-info{display:flex;flex-direction:column}
+.plant-name{font-size:10px}
+.plant-cost{font-size:9px;color:#ff880088}
+
+/* Connection lost */
+#disconnected{display:none;position:fixed;inset:0;background:rgba(3,7,18,.7);
+  z-index:200;align-items:center;justify-content:center}
+#disconnected-box{background:rgba(3,7,18,.97);border:1px solid #ff004433;
+  color:#ff0044;font-family:'Share Tech Mono';padding:16px 32px;text-align:center}
+
+/* Vignette */
+#vignette{pointer-events:none;position:fixed;inset:0;z-index:10;
+  background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,10,.7)100%)}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes scanline{0%{transform:translateY(-100vh)}100%{transform:translateY(100vh)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeOut{to{opacity:0}}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1a2a4a}
+</style>
+</head>
+<body>
+
+<!-- CRT overlay -->
+<div id="crt"></div>
+<div id="vignette"></div>
+
+<!-- Custom cursor -->
+<div id="cursor">+</div>
+
+<!-- Boot sequence -->
+<div id="boot">
+  <div id="boot-window">
+    <div id="boot-titlebar">
+      <div class="dot" style="background:#ff5f57"></div>
+      <div class="dot" style="background:#ffbd2e"></div>
+      <div class="dot" style="background:#28c840"></div>
+      <span style="margin-left:8px;font-size:11px;color:#1a3a5a">TERMINAL — netgarden.sys</span>
+    </div>
+    <div id="boot-content"><span id="boot-cursor">█</span></div>
+  </div>
+</div>
+
+<!-- Game canvas -->
+<canvas id="canvas"></canvas>
+
+<!-- HUD -->
+<div class="panel panel-neon" id="hud-status">
+  <div style="color:#1a4a6a;margin-bottom:4px">╔══ NETGARDEN ══╗</div>
+  <div class="hud-row"><span class="label">ONLINE</span><span class="val-c" id="online-count">1</span></div>
+  <div class="hud-row"><span class="label">COORDS</span><span class="val-g" id="coords">0:0</span></div>
+  <div class="hud-row"><span class="label">SEEDS</span><span class="val-o" id="seeds-bar">██████████████ 14</span></div>
+  <div class="hud-row"><span class="label">AGENT</span><span id="agent-name" class="val-m">—</span></div>
+  <div class="hud-row"><span class="label">ENV</span><span class="val-g" id="env-status">SPRING ○</span></div>
+  <div style="color:#1a4a6a;margin-top:4px">╚══════════════╝</div>
+</div>
+
+<div class="panel panel-neon" id="hud-minimap">
+  <div style="color:#00ff8866;font-size:10px;margin-bottom:3px">▸ MINIMAP</div>
+  <canvas id="minimap" width="120" height="80"></canvas>
+</div>
+
+<div class="panel panel-neon" id="hud-controls">
+  <div style="color:#00ff8866;margin-bottom:3px">▸ CONTROLS</div>
+  <div class="hud-row" style="gap:16px"><span class="val-c">[WASD/↑↓←→]</span><span style="color:#ffffff44">move</span></div>
+  <div class="hud-row" style="gap:16px"><span class="val-c">[P]</span><span style="color:#ffffff44">plant seed</span></div>
+  <div class="hud-row" style="gap:16px"><span class="val-c">[R]</span><span style="color:#ffffff44">remove</span></div>
+  <div class="hud-row" style="gap:16px"><span class="val-c">[E]</span><span style="color:#ffffff44">inspect</span></div>
+  <div class="hud-row" style="gap:16px"><span class="val-c">[Enter]</span><span style="color:#ffffff44">chat</span></div>
+  <div class="hud-row" style="gap:16px"><span class="val-c">[Click]</span><span style="color:#ffffff44">plant here</span></div>
+</div>
+
+<div class="panel panel-neon" id="hud-chat-log">
+  <div id="chat-log-title">▸ NETWORK CHAT</div>
+  <div id="chat-log"></div>
+</div>
+
+<div id="plant-menu">
+  <div style="color:#00ff8866;font-size:10px">SELECT SEED TYPE:</div>
+  <div class="plant-grid" id="plant-grid"></div>
+</div>
+
+<div class="panel panel-neon" id="hud-plant" onclick="togglePlantMenu()">
+  <div style="color:#00ff8866;font-size:10px">▸ SEED [P]</div>
+  <div id="selected-plant-display" style="font-size:16px">* <span style="color:#ffffff44;font-size:10px">Neon Flower</span></div>
+</div>
+
+<div id="hud-tile-info" class="panel">
+  <div style="color:#00ffff88">▸ TILE INFO</div>
+  <div id="tile-info-content"></div>
+</div>
+
+<div class="panel panel-neon" id="hud-bar">
+  <span id="bar-prompt">›</span>
+  <div id="chat-input-wrap"><input id="chat-input" maxlength="120" placeholder="broadcast message... (Enter=send, Esc=cancel)"/></div>
+  <span id="bar-status">NETGARDEN ONLINE — press Enter to chat, P to plant, R to remove</span>
+  <span id="bar-cursor" class="animate-blink">█</span>
+  <button id="audio-btn" onclick="toggleAudio()">♪ ON</button>
+</div>
+
+<div id="disconnected">
+  <div id="disconnected-box">
+    <div style="animation:blink 1s step-end infinite">⚠ DEMO MODE</div>
+    <div style="font-size:11px;color:#ff004488;margin-top:4px">server not connected — local simulation active</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS & CONFIG
+// ═══════════════════════════════════════════════════════════
+
+const CELL_W = 14, CELL_H = 16;
+const FONT = '13px "Share Tech Mono",monospace';
+const CHUNK = 32;
+const VIEW = 22;
+
+const TERRAIN_CHARS = {
+  '.': {ch:'.', fg:'#1a4a1a', bg:'#050e05'},
+  '~': {ch:'~', fg:'#0a3a6a', bg:'#020a14'},
+  '#': {ch:'#', fg:'#4a4a4a', bg:'#111111'},
+  '░': {ch:'░', fg:'#111130', bg:'#05050f'},
+  ',': {ch:',', fg:'#2a3a1a', bg:'#080f05'},
+  ':': {ch:':', fg:'#1a1a3a', bg:'#05050f'},
+};
+
+const PLANT_DEFS = {
+  '*': {sym:'*', name:'Neon Flower',  color:'#ff00ff', glow:'#ff00ff80', rare:false, cost:1},
+  'T': {sym:'T', name:'Data Tree',    color:'#00ff88', glow:'#00ff8860', rare:false, cost:2},
+  '^': {sym:'^', name:'Crystal',      color:'#00ffff', glow:'#00ffff80', rare:false, cost:2},
+  'Y': {sym:'Y', name:'Synth Shrub',  color:'#88ff00', glow:'#88ff0060', rare:false, cost:1},
+  'o': {sym:'o', name:'Orb Moss',     color:'#ff8800', glow:'#ff880060', rare:false, cost:1},
+  '$': {sym:'$', name:'Credit Bloom', color:'#ffff00', glow:'#ffff0080', rare:true,  cost:5},
+  '&': {sym:'&', name:'Ghost Vine',   color:'#cc00ff', glow:'#cc00ff80', rare:true,  cost:4},
+  '@': {sym:'@', name:'Netrunner Rose',color:'#ff0055',glow:'#ff005580', rare:true,  cost:5},
+  '!': {sym:'!', name:'Signal Spike', color:'#ffffff', glow:'#ffffff60', rare:false, cost:1},
+  '?': {sym:'?', name:'Unknown Entity',color:'#00ffff',glow:'#00ffff40', rare:true,  cost:8},
+};
+
+const PLAYER_COLORS = ['#00ff88','#ff00ff','#00ffff','#ff8800','#ff0055','#88ff00','#ffff00','#cc00ff'];
+const PLAYER_AVATARS = ['@','%','&','§','Ω','λ','Σ','π','μ','δ'];
+const PREFIXES = ['Neo','Ghost','Null','Void','Neon','Hex','Byte','Syn','Rogue','Data','Zero','Xen','Arc','Flux'];
+const SUFFIXES = ['Runner','Hacker','Blade','Wire','Drift','Link','Shade','Core','Pulse','Node','Grid','Echo'];
+const SEASONS = ['spring','summer','autumn','winter'];
+const SEASON_TINTS = {spring:'rgba(0,255,136,.025)',summer:'rgba(255,255,0,.03)',autumn:'rgba(255,100,0,.04)',winter:'rgba(100,200,255,.03)'};
+const WEATHER_ICONS = {clear:'○',rain:'≋',snow:'❄',storm:'⚡',glitch:'▒'};
+
+// ═══════════════════════════════════════════════════════════
+//  PROCEDURAL WORLD GENERATION
+// ═══════════════════════════════════════════════════════════
+
+function hash(x,y,s=42){let h=s;h=Math.imul(h^x,0x9e3779b9)|0;h=Math.imul(h^y,0x85ebca6b)|0;h=Math.imul(h^(h>>>16),0xc2b2ae35)|0;return((h>>>0)/0xffffffff)}
+function smooth(x,y,sc,s){const fx=x/sc,fy=y/sc,ix=Math.floor(fx),iy=Math.floor(fy),dx=fx-ix,dy=fy-iy;const a=hash(ix,iy,s),b=hash(ix+1,iy,s),c=hash(ix,iy+1,s),d=hash(ix+1,iy+1,s);const ux=dx*dx*(3-2*dx),uy=dy*dy*(3-2*dy);return a+(b-a)*ux+(c-a)*uy+(a-b-c+d)*ux*uy}
+function fbm(x,y,oct,s){let v=0,a=1,t=0;for(let i=0;i<oct;i++){v+=smooth(x,y,Math.pow(2,i)*8,s+i*1000)*a;t+=a;a*=.5}return v/t}
+
+function genTile(x,y){
+  const e=fbm(x,y,4,42), m=fbm(x,y,3,137), c=hash(x,y,999);
+  let t='.';
+  if(e<.25)t='~';
+  else if(e<.35)t=',';
+  else if(e>.78)t='#';
+  else if(m>.72)t=':';
+  else if(c>.97)t='░';
+  return {x,y,terrain:t,plant:null,ownerId:null,ownerName:null,glowing:false,rare:false};
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WORLD STATE
+// ═══════════════════════════════════════════════════════════
+
+const tiles = new Map();
+const visited = new Set();
+
+function tkey(x,y){return x+','+y}
+
+function getTile(x,y){
+  const k=tkey(x,y);
+  if(!tiles.has(k))tiles.set(k,genTile(x,y));
+  return tiles.get(k);
+}
+
+function ensureLoaded(cx,cy,r=2){
+  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    const bx=(cx+dx)*CHUNK,by=(cy+dy)*CHUNK;
+    for(let ty=0;ty<CHUNK;ty++)for(let tx=0;tx<CHUNK;tx++)getTile(bx+tx,by+ty);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LOCAL PLAYER & OTHERS (simulated)
+// ═══════════════════════════════════════════════════════════
+
+function genName(){return PREFIXES[Math.floor(Math.random()*PREFIXES.length)]+SUFFIXES[Math.floor(Math.random()*SUFFIXES.length)]+Math.floor(Math.random()*99)}
+
+const localPlayer = {
+  id:'local',
+  name:genName(),
+  x:0, y:0,
+  color:PLAYER_COLORS[Math.floor(Math.random()*PLAYER_COLORS.length)],
+  avatar:PLAYER_AVATARS[Math.floor(Math.random()*PLAYER_AVATARS.length)],
+  seeds:14,
+};
+
+// Simulated bots
+const bots = Array.from({length:6},(_,i)=>({
+  id:'bot'+i,
+  name:genName(),
+  x:Math.floor((Math.random()-.5)*30),
+  y:Math.floor((Math.random()-.5)*30),
+  color:PLAYER_COLORS[(i+2)%PLAYER_COLORS.length],
+  avatar:PLAYER_AVATARS[(i+3)%PLAYER_AVATARS.length],
+  vx:Math.random()<.5?1:-1,
+  vy:Math.random()<.5?1:-1,
+  timer:0,
+  interval:40+Math.floor(Math.random()*80),
+}));
+
+// ═══════════════════════════════════════════════════════════
+//  CHAT
+// ═══════════════════════════════════════════════════════════
+
+const chatMessages = [];
+const BOT_MSGS = [
+  'the data flows like rain','found a rare crystal node',
+  'planting more flowers at sector 7','the grid expands','who goes there?',
+  '01001110 01000101 01001111','beautiful here tonight','signal boosted',
+  'ghost in the network','this garden glows','running in the shadows',
+];
+
+function addChat(playerName,text,color='#00ffff'){
+  const msg={id:Math.random().toString(36),playerName,text,color,timestamp:Date.now(),x:0,y:0};
+  chatMessages.push(msg);
+  if(chatMessages.length>50)chatMessages.shift();
+  renderChatLog();
+  return msg;
+}
+
+function renderChatLog(){
+  const el=document.getElementById('chat-log');
+  el.innerHTML='';
+  chatMessages.slice(-15).forEach(m=>{
+    const d=document.createElement('div');
+    d.className='chat-msg';
+    d.innerHTML=`<span class="chat-name" style="color:${m.color||'#00ffff88'}">${m.playerName.slice(0,12)}</span><span class="chat-sep"> › </span><span class="chat-text">${m.text.slice(0,60)}</span>`;
+    el.appendChild(d);
+  });
+  el.scrollTop=el.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AUDIO (Web Audio API)
+// ═══════════════════════════════════════════════════════════
+
+let audioCtx=null, masterGain=null, audioEnabled=true;
+
+function initAudio(){
+  try{
+    audioCtx=new AudioContext();
+    masterGain=audioCtx.createGain();
+    masterGain.gain.value=.12;
+    masterGain.connect(audioCtx.destination);
+    startAmbient();
+  }catch(e){console.warn('audio unavailable')}
+}
+
+function resumeAudio(){audioCtx&&audioCtx.state==='suspended'&&audioCtx.resume()}
+
+function startAmbient(){
+  if(!audioCtx||!masterGain)return;
+  [55,82.5,110].forEach((f,i)=>{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain(),fl=audioCtx.createBiquadFilter();
+    o.type=['sawtooth','sine','sine'][i];o.frequency.value=f;
+    fl.type='lowpass';fl.frequency.value=350;
+    g.gain.value=[.05,.035,.025][i];
+    o.connect(fl);fl.connect(g);g.connect(masterGain);o.start();
+  });
+  [220,277.2,330].forEach((f,i)=>{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    const lfo=audioCtx.createOscillator(),lg=audioCtx.createGain();
+    lfo.frequency.value=.15+Math.random()*.25;lg.gain.value=f*.002;
+    lfo.connect(lg);lg.connect(o.frequency);
+    o.type='sawtooth';o.frequency.value=f;
+    g.gain.value=0;g.gain.setTargetAtTime(.015-i*.003,audioCtx.currentTime,3);
+    o.connect(g);g.connect(masterGain);
+    lfo.start();o.start();
+  });
+  scheduleShimmer();
+}
+
+function scheduleShimmer(){
+  if(!audioCtx||!masterGain)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type='sine';o.frequency.value=880+Math.random()*2640;
+  g.gain.value=0;g.gain.linearRampToValueAtTime(.006,audioCtx.currentTime+.01);
+  g.gain.linearRampToValueAtTime(0,audioCtx.currentTime+.25);
+  o.connect(g);g.connect(masterGain);o.start();o.stop(audioCtx.currentTime+.3);
+  setTimeout(scheduleShimmer,2000+Math.random()*5000);
+}
+
+function sfx(freq,freq2,dur,type='sine',vol=.08){
+  if(!audioCtx||!masterGain||!audioEnabled)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,audioCtx.currentTime);
+  if(freq2)o.frequency.linearRampToValueAtTime(freq2,audioCtx.currentTime+dur);
+  g.gain.setValueAtTime(vol,audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0,audioCtx.currentTime+dur);
+  o.connect(g);g.connect(masterGain);o.start();o.stop(audioCtx.currentTime+dur+.02);
+}
+
+function toggleAudio(){
+  audioEnabled=!audioEnabled;
+  if(masterGain)masterGain.gain.setTargetAtTime(audioEnabled?.12:0,audioCtx.currentTime,.3);
+  document.getElementById('audio-btn').textContent='♪ '+(audioEnabled?'ON':'OFF');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WEATHER & SEASON
+// ═══════════════════════════════════════════════════════════
+
+let weather='clear', weatherIntensity=.6, season='spring', seasonIdx=0;
+const particles=[];
+
+function tickWeather(){
+  const r=Math.random();
+  if(r<.55)weather='clear';
+  else if(r<.7)weather='rain';
+  else if(r<.82)weather='snow';
+  else if(r<.92)weather='storm';
+  else weather='glitch';
+  document.getElementById('env-status').textContent=
+    SEASONS[seasonIdx].toUpperCase()+' '+WEATHER_ICONS[weather];
+}
+
+function tickSeason(){
+  seasonIdx=(seasonIdx+1)%4;
+  season=SEASONS[seasonIdx];
+  document.getElementById('env-status').textContent=
+    season.toUpperCase()+' '+WEATHER_ICONS[weather];
+}
+
+setInterval(tickWeather,45000+Math.random()*60000);
+setInterval(tickSeason,8*60000);
+
+function spawnParticle(W,H){
+  const CHARS={clear:[],rain:['|','¦'],snow:['*','·','°'],storm:['/','|','\\'],glitch:['█','░','▓','?','@']};
+  const COLORS={clear:'#000',rain:'#003355',snow:'#aaddff',storm:'#5500aa',glitch:'#ff00ff'};
+  const cs=CHARS[weather];if(!cs||!cs.length)return;
+  particles.push({
+    x:Math.random()*W,y:weather==='glitch'?Math.random()*H:-10,
+    vx:weather==='storm'?35:0,vy:weather==='glitch'?0:weather==='snow'?18:75,
+    ch:cs[Math.floor(Math.random()*cs.length)],color:COLORS[weather],
+    alpha:.6+Math.random()*.4,life:weather==='glitch'?.1+Math.random()*.25:2+Math.random()*2,
+    maxLife:weather==='glitch'?.35:4,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDERER
+// ═══════════════════════════════════════════════════════════
+
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const mm=document.getElementById('minimap');
+const mmc=mm.getContext('2d');
+let frame=0;
+let camX=0,camY=0,targetCamX=0,targetCamY=0;
+
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight}
+window.addEventListener('resize',resize);resize();
+
+function worldToScreen(wx,wy){
+  const tw=canvas.width/CELL_W,th=canvas.height/CELL_H;
+  return{sx:Math.round((wx-camX+tw/2)*CELL_W),sy:Math.round((wy-camY+th/2)*CELL_H)};
+}
+function screenToWorld(sx,sy){
+  const tw=canvas.width/CELL_W,th=canvas.height/CELL_H;
+  return{x:Math.floor(sx/CELL_W+camX-tw/2),y:Math.floor(sy/CELL_H+camY-th/2)};
+}
+
+function render(dt){
+  frame++;
+  // Smooth camera
+  camX+=(targetCamX-camX)*.12;
+  camY+=(targetCamY-camY)*.12;
+
+  const W=canvas.width,H=canvas.height;
+  ctx.fillStyle='#030712';ctx.fillRect(0,0,W,H);
+  ctx.font=FONT;ctx.textBaseline='top';
+
+  const tw=Math.ceil(W/CELL_W)+2,th=Math.ceil(H/CELL_H)+2;
+  const sx0=Math.floor(camX-tw/2),sy0=Math.floor(camY-th/2);
+
+  // Mark visited near player
+  for(let dy=-9;dy<=9;dy++)for(let dx=-9;dx<=9;dx++)visited.add(tkey(localPlayer.x+dx,localPlayer.y+dy));
+
+  // Draw tiles
+  for(let ty=sy0;ty<=sy0+th;ty++){
+    for(let tx=sx0;tx<=sx0+tw;tx++){
+      const t=getTile(tx,ty);
+      const{sx,sy}=worldToScreen(tx,ty);
+      const isVis=visited.has(tkey(tx,ty));
+      const isNear=Math.abs(localPlayer.x-tx)<=13&&Math.abs(localPlayer.y-ty)<=11;
+      const fog=isVis?(isNear?1:.35):.12;
+      const td=TERRAIN_CHARS[t.terrain]||TERRAIN_CHARS['.'];
+
+      // BG
+      ctx.globalAlpha=fog*.5;
+      ctx.fillStyle=td.bg;
+      ctx.fillRect(sx,sy,CELL_W,CELL_H);
+
+      // Terrain char
+      ctx.globalAlpha=fog*.65;
+      ctx.fillStyle=td.fg;
+      ctx.fillText(td.ch,sx+1,sy);
+      ctx.globalAlpha=1;
+
+      // Plant
+      if(t.plant&&PLANT_DEFS[t.plant]){
+        const pd=PLANT_DEFS[t.plant];
+        const pulse=pd.rare?.72+.28*Math.sin(frame*.08+tx*.5+ty*.3):1;
+        if(pd.rare||t.glowing){
+          const gr=ctx.createRadialGradient(sx+7,sy+8,0,sx+7,sy+8,18*pulse);
+          gr.addColorStop(0,pd.glow);gr.addColorStop(1,'transparent');
+          ctx.globalAlpha=fog*pulse;ctx.fillStyle=gr;
+          ctx.fillRect(sx-16,sy-14,CELL_W+32,CELL_H+28);ctx.globalAlpha=1;
+        }
+        ctx.globalAlpha=fog*pulse;
+        ctx.fillStyle=pd.color;ctx.shadowColor=pd.glow;ctx.shadowBlur=pd.rare?12:5;
+        ctx.fillText(pd.sym,sx+1,sy);ctx.shadowBlur=0;ctx.globalAlpha=1;
+      }
+    }
+  }
+
+  // Season tint
+  ctx.fillStyle=SEASON_TINTS[season];ctx.fillRect(0,0,W,H);
+
+  // Weather particles
+  const count=weather==='clear'?0:Math.floor(weatherIntensity*4+(weather==='glitch'?3:0));
+  for(let i=0;i<count;i++)spawnParticle(W,H);
+  ctx.font='11px "Share Tech Mono"';
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;p.alpha=Math.max(0,p.life/p.maxLife);
+    if(p.life<=0||p.y>H+20){particles.splice(i,1);continue}
+    ctx.globalAlpha=p.alpha*.6;ctx.fillStyle=p.color;ctx.fillText(p.ch,p.x,p.y);
+  }
+  ctx.globalAlpha=1;ctx.font=FONT;
+
+  // Draw bots
+  for(const bot of bots){
+    const{sx,sy}=worldToScreen(bot.x,bot.y);
+    if(sx<-20||sx>W+20||sy<-20||sy>H+20)continue;
+    const gr=ctx.createRadialGradient(sx+7,sy+8,0,sx+7,sy+8,18);
+    gr.addColorStop(0,bot.color+'30');gr.addColorStop(1,'transparent');
+    ctx.fillStyle=gr;ctx.fillRect(sx-12,sy-8,44,34);
+    ctx.fillStyle=bot.color;ctx.shadowColor=bot.color;ctx.shadowBlur=7;
+    ctx.fillText(bot.avatar,sx+1,sy);ctx.shadowBlur=0;
+    ctx.font='9px "Share Tech Mono"';ctx.fillStyle=bot.color+'99';
+    ctx.fillText(bot.name.slice(0,9),sx-8,sy-11);ctx.font=FONT;
+  }
+
+  // Draw local player
+  const{sx:lsx,sy:lsy}=worldToScreen(localPlayer.x,localPlayer.y);
+  const blinkOn=Math.floor(frame/15)%2===0;
+  const lgr=ctx.createRadialGradient(lsx+7,lsy+8,0,lsx+7,lsy+8,26);
+  lgr.addColorStop(0,localPlayer.color+'45');lgr.addColorStop(1,'transparent');
+  ctx.fillStyle=lgr;ctx.fillRect(lsx-18,lsy-12,52,42);
+  if(blinkOn){
+    ctx.fillStyle=localPlayer.color;ctx.shadowColor=localPlayer.color;ctx.shadowBlur=14;
+    ctx.fillText(localPlayer.avatar,lsx+1,lsy);ctx.shadowBlur=0;
+  }
+  ctx.font='8px "Share Tech Mono"';ctx.fillStyle='#ffffff66';
+  ctx.fillText('YOU',lsx+2,lsy-11);ctx.font=FONT;
+
+  // Chat bubbles
+  const now=Date.now();
+  chatMessages.slice(-8).forEach(msg=>{
+    if(!msg.wx&&!msg.wy)return;
+    const age=now-msg.timestamp;if(age>5000)return;
+    const{sx,sy}=worldToScreen(msg.wx,msg.wy);
+    if(sx<-200||sx>W+200)return;
+    const alpha=Math.max(0,1-age/5000);
+    ctx.globalAlpha=alpha;
+    const tw2=Math.min(msg.text.length*7,160);
+    const bx=sx-tw2/2+7,by=sy-26;
+    ctx.fillStyle='rgba(0,20,40,.88)';ctx.strokeStyle='#00ffff';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(bx,by,tw2+10,16,3);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#00ffff';ctx.font='9px "Share Tech Mono"';
+    ctx.fillText(msg.text.slice(0,22),bx+5,by+3);ctx.font=FONT;ctx.globalAlpha=1;
+  });
+
+  // Vignette
+  const vg=ctx.createRadialGradient(W/2,H/2,H*.3,W/2,H/2,H*.9);
+  vg.addColorStop(0,'transparent');vg.addColorStop(1,'rgba(0,0,10,.65)');
+  ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+
+  // Minimap
+  renderMinimap();
+}
+
+function renderMinimap(){
+  const MW=120,MH=80,scale=2;
+  mmc.fillStyle='#030712';mmc.fillRect(0,0,MW,MH);
+  const startX=localPlayer.x-Math.floor(MW/scale/2);
+  const startY=localPlayer.y-Math.floor(MH/scale/2);
+  for(let my=0;my<MH;my++){
+    for(let mx=0;mx<MW;mx++){
+      const wx=startX+Math.floor(mx/scale),wy=startY+Math.floor(my/scale);
+      const t=tiles.get(tkey(wx,wy));if(!t)continue;
+      let c='#0a0f1e';
+      if(t.terrain==='~')c='#0a2a4a';
+      else if(t.terrain==='#')c='#3a3a3a';
+      else if(t.plant)c=PLANT_DEFS[t.plant]?.color||'#00ff88';
+      else c='#0a1a0a';
+      mmc.fillStyle=c;mmc.fillRect(mx,my,1,1);
+    }
+  }
+  // Players on minimap
+  [...bots,{...localPlayer,isLocal:true}].forEach(p=>{
+    const px=Math.floor((p.x-startX)*scale/scale+(p.x-startX));
+    const py_=Math.floor((p.y-startY));
+    const mmx=Math.floor(((p.x-startX)/(MW/scale))*MW);
+    const mmy=Math.floor(((p.y-startY)/(MH/scale))*MH);
+    if(mmx<0||mmy<0||mmx>=MW||mmy>=MH)return;
+    mmc.fillStyle=p.isLocal?'#ffffff':p.color;
+    mmc.fillRect(mmx-1,mmy-1,3,3);
+  });
+  mmc.strokeStyle='#1a2a4a';mmc.lineWidth=1;mmc.strokeRect(0,0,MW,MH);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  GAME LOOP & BOT SIMULATION
+// ═══════════════════════════════════════════════════════════
+
+let lastT=0;
+
+function gameLoop(ts){
+  const dt=Math.min((ts-lastT)/1000,.1);lastT=ts;
+
+  // Bot movement
+  bots.forEach(bot=>{
+    bot.timer++;
+    if(bot.timer>=bot.interval){
+      bot.timer=0;bot.interval=30+Math.floor(Math.random()*90);
+      const dx=[0,0,1,-1][Math.floor(Math.random()*4)];
+      const dy=[1,-1,0,0][Math.floor(Math.random()*4)];
+      const nx=bot.x+dx,ny=bot.y+dy;
+      const t=getTile(nx,ny);
+      if(t.terrain!=='#'&&t.terrain!=='~'){bot.x=nx;bot.y=ny}
+      // Bots occasionally plant
+      if(Math.random()<.03&&!t.plant&&t.terrain==='.'){
+        const plants=Object.keys(PLANT_DEFS).filter(k=>!PLANT_DEFS[k].rare);
+        const chosen=plants[Math.floor(Math.random()*plants.length)];
+        t.plant=chosen;t.ownerId=bot.id;t.ownerName=bot.name;
+        t.glowing=false;t.rare=false;
+        tiles.set(tkey(nx,ny),t);
+      }
+      // Bots chat occasionally
+      if(Math.random()<.005){
+        const msg=BOT_MSGS[Math.floor(Math.random()*BOT_MSGS.length)];
+        const cm=addChat(bot.name,msg,bot.color);
+        cm.wx=bot.x;cm.wy=bot.y;
+        sfx(1320,660,.12,'sine',.04);
+      }
+    }
+  });
+
+  render(dt);
+  updateHUD();
+  requestAnimationFrame(gameLoop);
+}
+
+function updateHUD(){
+  document.getElementById('coords').textContent=localPlayer.x+':'+localPlayer.y;
+  document.getElementById('agent-name').textContent=localPlayer.name;
+  document.getElementById('agent-name').style.color=localPlayer.color;
+  const s=localPlayer.seeds;
+  document.getElementById('seeds-bar').textContent='█'.repeat(Math.min(s,14))+' '+s;
+  document.getElementById('online-count').textContent=bots.length+1;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INPUT
+// ═══════════════════════════════════════════════════════════
+
+let chatOpen=false;
+const held=new Set();
+let moveRepeat=null;
+
+document.addEventListener('keydown',e=>{
+  if(chatOpen&&e.key!=='Escape'&&e.key!=='Enter')return;
+  if(e.key==='Enter'){
+    if(chatOpen){submitChat();return}
+    openChat();return;
+  }
+  if(e.key==='Escape'&&chatOpen){closeChat();return}
+  const moves={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],
+    w:[0,-1],s:[0,1],a:[-1,0],d:[1,0],W:[0,-1],S:[0,1],A:[-1,0],D:[1,0]};
+  if(moves[e.key]){e.preventDefault();if(!held.has(e.key)){held.add(e.key);doMove(...moves[e.key]);startRepeat()}}
+  if(e.key==='p'||e.key==='P'){tryPlant(localPlayer.x,localPlayer.y)}
+  if(e.key==='r'||e.key==='R'){tryRemove(localPlayer.x,localPlayer.y)}
+  if(e.key==='e'||e.key==='E'){inspectTile(localPlayer.x,localPlayer.y)}
+});
+
+document.addEventListener('keyup',e=>{
+  held.delete(e.key);
+  const mv=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d'];
+  if(mv.includes(e.key)&&![...held].some(k=>mv.includes(k)))stopRepeat();
+});
+
+function doMove(dx,dy){
+  const nx=localPlayer.x+dx,ny=localPlayer.y+dy;
+  const t=getTile(nx,ny);
+  if(t.terrain==='#')return;
+  localPlayer.x=nx;localPlayer.y=ny;
+  targetCamX=nx;targetCamY=ny;
+  sfx(660+Math.random()*220,null,.04,'square',.015);
+  // Load more terrain
+  ensureLoaded(Math.floor(nx/CHUNK),Math.floor(ny/CHUNK),1);
+}
+
+function startRepeat(){
+  if(moveRepeat)return;
+  moveRepeat=setInterval(()=>{
+    const m={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
+    for(const [k,v] of Object.entries(m))if(held.has(k)){doMove(...v);break}
+  },115);
+}
+function stopRepeat(){clearInterval(moveRepeat);moveRepeat=null}
+
+function openChat(){
+  chatOpen=true;
+  document.getElementById('bar-status').style.display='none';
+  document.getElementById('bar-cursor').style.display='none';
+  document.getElementById('chat-input-wrap').style.display='flex';
+  document.getElementById('chat-input').focus();
+}
+function closeChat(){
+  chatOpen=false;
+  document.getElementById('bar-status').style.display='';
+  document.getElementById('bar-cursor').style.display='';
+  document.getElementById('chat-input-wrap').style.display='none';
+  document.getElementById('chat-input').value='';
+}
+function submitChat(){
+  const text=document.getElementById('chat-input').value.trim();
+  if(text){
+    const msg=addChat(localPlayer.name,text,localPlayer.color);
+    msg.wx=localPlayer.x;msg.wy=localPlayer.y;
+    sfx(1320,null,.08,'sine',.06);
+  }
+  closeChat();
+}
+
+// Mouse / canvas click
+canvas.addEventListener('mousemove',e=>{
+  document.getElementById('cursor').style.left=e.clientX+'px';
+  document.getElementById('cursor').style.top=e.clientY+'px';
+  const{x,y}=screenToWorld(e.clientX,e.clientY);
+  const t=tiles.get(tkey(x,y));
+  if(t)showTileInfo(x,y,t);
+  else hideTileInfo();
+});
+
+canvas.addEventListener('click',e=>{
+  resumeAudio();
+  const{x,y}=screenToWorld(e.clientX,e.clientY);
+  const dx=Math.abs(x-localPlayer.x),dy=Math.abs(y-localPlayer.y);
+  if(dx<=1&&dy<=1)tryPlant(x,y);
+});
+
+canvas.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  const{x,y}=screenToWorld(e.clientX,e.clientY);
+  tryRemove(x,y);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  PLANT / REMOVE
+// ═══════════════════════════════════════════════════════════
+
+let selectedPlant='*';
+
+function tryPlant(x,y){
+  const t=getTile(x,y);
+  if(t.terrain==='#'||t.terrain==='~'){showError('Cannot plant here');return}
+  if(t.plant){showError('Tile occupied');return}
+  const pd=PLANT_DEFS[selectedPlant];
+  if(localPlayer.seeds<pd.cost){showError('Not enough seeds');return}
+  t.plant=selectedPlant;t.ownerId='local';t.ownerName=localPlayer.name;
+  t.glowing=pd.rare;t.rare=pd.rare;
+  tiles.set(tkey(x,y),t);
+  localPlayer.seeds-=pd.cost;
+  sfx(440,880,.1,'sine',.08);
+}
+
+function tryRemove(x,y){
+  const t=tiles.get(tkey(x,y));
+  if(!t||!t.plant)return;
+  if(t.ownerId&&t.ownerId!=='local'){showError("Can't remove another's plant");return}
+  t.plant=null;t.ownerId=null;t.ownerName=null;t.glowing=false;t.rare=false;
+  tiles.set(tkey(x,y),t);
+  localPlayer.seeds=Math.min(localPlayer.seeds+1,99);
+  sfx(220,110,.1,'sawtooth',.06);
+}
+
+function inspectTile(x,y){
+  const t=tiles.get(tkey(x,y));
+  if(t)showTileInfo(x,y,t);
+}
+
+let hideInfoTimer=null;
+function showTileInfo(x,y,t){
+  const el=document.getElementById('hud-tile-info');
+  const cn=document.getElementById('tile-info-content');
+  let html=`<div><span style="color:#ffffff44">pos:</span> <span style="color:#00ff88">${x},${y}</span></div>`;
+  html+=`<div><span style="color:#ffffff44">terrain:</span> <span style="color:#00ff88">${t.terrain}</span></div>`;
+  if(t.plant&&PLANT_DEFS[t.plant]){
+    const pd=PLANT_DEFS[t.plant];
+    html+=`<div><span style="color:#ffffff44">plant:</span> <span style="color:${pd.color}">${pd.sym} ${pd.name}</span></div>`;
+    if(t.ownerName)html+=`<div><span style="color:#ffffff44">by:</span> <span style="color:#ff00ff88">${t.ownerName}</span></div>`;
+  }
+  cn.innerHTML=html;el.style.display='block';
+  clearTimeout(hideInfoTimer);hideInfoTimer=setTimeout(hideTileInfo,3000);
+}
+function hideTileInfo(){document.getElementById('hud-tile-info').style.display='none'}
+
+function showError(msg){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:50;background:rgba(3,7,18,.95);border:1px solid #ff004433;color:#ff0044;font-family:"Share Tech Mono";padding:10px 20px;animation:fadeOut 1s .5s forwards';
+  el.textContent='⚠ '+msg;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1600);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PLANT MENU
+// ═══════════════════════════════════════════════════════════
+
+function buildPlantMenu(){
+  const grid=document.getElementById('plant-grid');
+  grid.innerHTML='';
+  Object.values(PLANT_DEFS).forEach(pd=>{
+    const btn=document.createElement('button');
+    btn.className='plant-btn'+(pd.sym===selectedPlant?' active':'');
+    btn.style.borderColor=pd.sym===selectedPlant?pd.color:'#1a2a4a';
+    btn.style.textShadow=`0 0 6px ${pd.color}`;
+    btn.innerHTML=`<span class="plant-sym" style="color:${pd.color}">${pd.sym}</span><div class="plant-info"><div class="plant-name" style="color:${pd.color}">${pd.name}</div><div class="plant-cost">${pd.cost}🌱${pd.rare?' ★RARE':''}</div></div>`;
+    btn.onclick=()=>{selectedPlant=pd.sym;togglePlantMenu();updatePlantDisplay()};
+    grid.appendChild(btn);
+  });
+}
+
+function updatePlantDisplay(){
+  const pd=PLANT_DEFS[selectedPlant];
+  document.getElementById('selected-plant-display').innerHTML=
+    `<span style="color:${pd.color};text-shadow:0 0 8px ${pd.color}">${pd.sym}</span> <span style="color:#ffffff44;font-size:10px">${pd.name}</span>`;
+}
+
+let plantMenuOpen=false;
+function togglePlantMenu(){
+  plantMenuOpen=!plantMenuOpen;
+  const menu=document.getElementById('plant-menu');
+  if(plantMenuOpen){buildPlantMenu();menu.style.display='block'}
+  else menu.style.display='none';
+}
+
+// Close plant menu on outside click
+document.addEventListener('click',e=>{
+  if(plantMenuOpen&&!e.target.closest('#plant-menu')&&!e.target.closest('#hud-plant'))
+    {plantMenuOpen=false;document.getElementById('plant-menu').style.display='none'}
+});
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT SEQUENCE
+// ═══════════════════════════════════════════════════════════
+
+const BOOT_LINES=[
+  {t:'NETGARDEN OS v2.077',d:0,c:'#00ffff'},
+  {t:'─────────────────────────────────',d:200,c:'#1a3a5a'},
+  {t:'initializing kernel...',d:400,c:'#00ff88',pre:'> '},
+  {t:'loading memory banks...          [OK]',d:700,c:'#00ff88',pre:'  '},
+  {t:'mounting filesystem...           [OK]',d:950,c:'#00ff88',pre:'  '},
+  {t:'checking server connection...',d:1200,c:'#00ffff',pre:'> '},
+  {t:'ping 127.0.0.1 ... 2ms          [OK]',d:1650,c:'#00ff88',pre:'  '},
+  {t:'authenticating node...           [OK]',d:1900,c:'#00ff88',pre:'  '},
+  {t:'loading world chunks...',d:2150,c:'#ff00ff',pre:'> '},
+  {t:'chunk[0,0] → [READY]',d:2500,c:'#00ff88',pre:'  '},
+  {t:'chunk[1,0] → [READY]',d:2700,c:'#00ff88',pre:'  '},
+  {t:'synchronizing clients...',d:2900,c:'#ff8800',pre:'> '},
+  {t:'socket.io handshake...          [OK]',d:3250,c:'#00ff88',pre:'  '},
+  {t:'spawning player entity...        [OK]',d:3500,c:'#00ff88',pre:'  '},
+  {t:'─────────────────────────────────',d:3700,c:'#1a3a5a'},
+  {t:'WELCOME TO THE GARDEN',d:3900,c:'#ff00ff'},
+  {t:'entering world...',d:4200,c:'#ffff00',pre:'> '},
+];
+
+function runBoot(){
+  const content=document.getElementById('boot-content');
+  const cursor=document.getElementById('boot-cursor');
+  content.innerHTML='';content.appendChild(cursor);
+
+  BOOT_LINES.forEach((line,i)=>{
+    setTimeout(()=>{
+      const div=document.createElement('div');
+      div.className='boot-line';
+      div.innerHTML=`<span style="color:#1a4a3a">${line.pre||''}</span><span style="color:${line.c||'#00ff88'}">${line.t}</span>`;
+      content.insertBefore(div,cursor);
+      if(i===BOOT_LINES.length-1){
+        setTimeout(()=>{
+          const boot=document.getElementById('boot');
+          boot.style.opacity='0';
+          setTimeout(()=>{boot.remove();startGame()},600);
+        },600);
+      }
+    },line.d);
+  });
+}
+
+function startGame(){
+  // Pre-load world
+  ensureLoaded(0,0,2);
+  targetCamX=localPlayer.x;targetCamY=localPlayer.y;
+  camX=localPlayer.x;camY=localPlayer.y;
+
+  // Plant some starter flora
+  const starters=[
+    {x:3,y:2,p:'T'},{x:-4,y:3,p:'*'},{x:5,y:-2,p:'^'},
+    {x:-6,y:-4,p:'Y'},{x:2,y:5,p:'o'},{x:-3,y:6,p:'T'},
+    {x:8,y:1,p:'*'},{x:-7,y:2,p:'^'},{x:1,y:-7,p:'$'},
+  ];
+  starters.forEach(({x,y,p})=>{
+    const t=getTile(x,y);
+    if(t.terrain==='.'||t.terrain===','){
+      t.plant=p;t.ownerId='world';t.ownerName='[SYSTEM]';
+      t.rare=PLANT_DEFS[p].rare;t.glowing=t.rare;
+      tiles.set(tkey(x,y),t);
+    }
+  });
+
+  initAudio();
+  updatePlantDisplay();
+  gameLoop(0);
+
+  // Welcome message
+  setTimeout(()=>addChat('[SYSTEM]','Welcome to NETGARDEN. Plant, explore, connect.','#ffff00'),1000);
+  setTimeout(()=>addChat('[SYSTEM]','Use P to plant, R to remove, Enter to chat.','#ffff00'),2500);
+  setTimeout(()=>addChat(bots[0].name,'another one joins the grid','#00ff88'),4000);
+}
+
+runBoot();
+</script>
+</body>
+</html>

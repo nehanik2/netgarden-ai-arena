@@ -1,0 +1,191 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Font ───────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+/* ── CSS Variables ─────────────────────────────────────── */
+:root {
+  --neon-green: #00ff88;
+  --neon-cyan: #00ffff;
+  --neon-magenta: #ff00ff;
+  --neon-orange: #ff8800;
+  --neon-yellow: #ffff00;
+  --dark-bg: #030712;
+  --dark-panel: #0a0f1e;
+  --dark-border: #1a2a4a;
+  --font-mono: 'Share Tech Mono', 'Courier New', monospace;
+}
+
+/* ── Reset ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--dark-bg);
+  color: var(--neon-green);
+  font-family: var(--font-mono);
+  cursor: none;
+}
+
+/* ── CRT Scanlines overlay ─────────────────────────────── */
+.crt-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.15) 2px,
+    rgba(0, 0, 0, 0.15) 4px
+  );
+  animation: flickerBg 0.1s infinite;
+}
+
+/* moving scanline */
+.crt-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 255, 136, 0.03) 50%,
+    transparent 100%
+  );
+  animation: scanline 6s linear infinite;
+  pointer-events: none;
+}
+
+/* ── Custom cursor ─────────────────────────────────────── */
+.custom-cursor {
+  position: fixed;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  z-index: 10000;
+  transform: translate(-50%, -50%);
+  color: var(--neon-cyan);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+  text-shadow: 0 0 8px var(--neon-cyan);
+}
+
+/* ── Neon text effects ─────────────────────────────────── */
+.text-neon-green { color: var(--neon-green); }
+.text-neon-cyan  { color: var(--neon-cyan); }
+.text-neon-mag   { color: var(--neon-magenta); }
+
+.glow-green  { text-shadow: 0 0 8px var(--neon-green),  0 0 20px var(--neon-green); }
+.glow-cyan   { text-shadow: 0 0 8px var(--neon-cyan),   0 0 20px var(--neon-cyan); }
+.glow-mag    { text-shadow: 0 0 8px var(--neon-magenta), 0 0 20px var(--neon-magenta); }
+
+/* ── Panel / border styles ─────────────────────────────── */
+.panel {
+  background: rgba(10, 15, 30, 0.92);
+  border: 1px solid var(--dark-border);
+  backdrop-filter: blur(4px);
+}
+
+.panel-neon {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2),
+              inset 0 0 20px rgba(0, 255, 136, 0.03);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--dark-bg); }
+::-webkit-scrollbar-thumb { background: var(--dark-border); border-radius: 2px; }
+
+/* ── Keyframes ─────────────────────────────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes scanline {
+  0%   { transform: translateY(-100vh); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+@keyframes flickerBg {
+  0%, 96%, 100% { opacity: 1; }
+  97% { opacity: 0.97; }
+  98% { opacity: 0.99; }
+  99% { opacity: 0.96; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes typewriter {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+
+.animate-blink { animation: blink 1s step-end infinite; }
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-slide-up { animation: slideUp 0.4s ease-out; }
+
+/* ── Boot terminal ─────────────────────────────────────── */
+.boot-line {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: fadeIn 0.1s ease-out forwards;
+}
+
+/* ── Canvas container ──────────────────────────────────── */
+#game-canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* ── Chat bubble ───────────────────────────────────────── */
+.chat-bubble {
+  position: absolute;
+  pointer-events: none;
+  max-width: 160px;
+  background: rgba(0, 20, 40, 0.9);
+  border: 1px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 2px;
+  white-space: nowrap;
+  animation: fadeIn 0.2s ease-out;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+}
+
+/* ── Input ─────────────────────────────────────────────── */
+.terminal-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--neon-green);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  caret-color: var(--neon-green);
+  width: 100%;
+}
