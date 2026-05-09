@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NETGARDEN AI ARENA — Rule-Based Agents</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<script src="/shared/constants.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ng:#00ff88;--cy:#00ffff;--mg:#ff00ff;--or:#ff8800;--ye:#ffff00;
+  --bg:#030712;--panel:#080f1e;--border:#1a2a4a;
+  --a:#00ffff;--b:#ff00ff;
+  --font:'Share Tech Mono',monospace;
+}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--ng);font-family:var(--font);overflow:hidden;font-size:13px}
+
+/* ── Layout ── */
+#app{display:grid;grid-template-columns:260px 1fr 260px;grid-template-rows:48px 1fr 180px;height:100vh;gap:0}
+#topbar{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--border)}
+#left-panel{grid-row:2/4;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#canvas-wrap{position:relative;overflow:hidden;background:#030712}
+#bottom-bar{border-top:1px solid var(--border);background:var(--panel);display:flex;gap:0;overflow:hidden}
+#right-panel{grid-row:2/4;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+
+/* ── CRT ── */
+#crt{pointer-events:none;position:fixed;inset:0;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.1)2px,rgba(0,0,0,.1)4px)}
+
+/* ── Canvas ── */
+#arena{display:block;image-rendering:pixelated}
+
+/* ── Topbar ── */
+.tb-logo{color:var(--cy);font-size:14px;letter-spacing:2px;text-shadow:0 0 10px var(--cy)}
+.tb-badge{background:#0a1a2a;border:1px solid var(--border);padding:2px 10px;font-size:11px;color:#ffffff55}
+.tb-phase{color:var(--mg);font-size:11px;border:1px solid var(--mg);padding:2px 8px}
+.tb-spacer{flex:1}
+.tb-btn{background:transparent;border:1px solid var(--ng);color:var(--ng);font-family:var(--font);
+  font-size:12px;padding:4px 14px;cursor:pointer;transition:all .15s}
+.tb-btn:hover{background:var(--ng);color:var(--bg)}
+.tb-btn.danger{border-color:#ff4444;color:#ff4444}
+.tb-btn.danger:hover{background:#ff4444;color:var(--bg)}
+.tb-btn.pause{border-color:var(--or);color:var(--or)}
+.tb-btn.pause:hover{background:var(--or);color:var(--bg)}
+#tick-counter{color:#ffffff33;font-size:11px;min-width:80px;text-align:right}
+
+/* ── Panels ── */
+.panel-title{padding:8px 12px;font-size:10px;color:#ffffff44;border-bottom:1px solid var(--border);
+  letter-spacing:2px;display:flex;justify-content:space-between;align-items:center}
+.panel-section{padding:10px 12px;border-bottom:1px solid #0a1a2a}
+.section-label{font-size:10px;color:#ffffff33;margin-bottom:6px;letter-spacing:1px}
+
+/* ── Score cards ── */
+.score-card{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-bottom:1px solid #0a1a2a}
+.sc-header{display:flex;justify-content:space-between;align-items:center}
+.sc-name{font-size:14px;font-weight:bold;text-shadow:0 0 8px currentColor}
+.sc-score{font-size:20px;font-weight:bold}
+.sc-bar-wrap{height:4px;background:#0a1a2a;border-radius:2px;margin:4px 0}
+.sc-bar{height:100%;border-radius:2px;transition:width .4s ease}
+.sc-details{display:flex;gap:12px;font-size:10px;color:#ffffff55}
+
+/* ── Weight sliders ── */
+.slider-group{display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;padding:10px 12px}
+.slider-row{display:flex;flex-direction:column;gap:3px}
+.slider-label{display:flex;justify-content:space-between;font-size:10px}
+.slider-name{color:#ffffff88}
+.slider-val{font-weight:bold}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:#1a2a4a;outline:none;cursor:pointer;border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;cursor:pointer;border:2px solid var(--bg)}
+.slider-desc{font-size:9px;color:#ffffff33}
+
+/* ── Presets ── */
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:8px 12px;border-bottom:1px solid #0a1a2a}
+.preset-btn{background:transparent;border:1px solid #1a2a4a;color:#ffffff66;font-family:var(--font);
+  font-size:10px;padding:4px 6px;cursor:pointer;text-align:left;transition:all .15s}
+.preset-btn:hover{border-color:currentColor;color:#fff}
+.preset-btn.active{background:#0a1a2a}
+
+/* ── Decision log ── */
+.decision-log{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+.log-entry{font-size:10px;line-height:1.6;border-left:2px solid #1a2a4a;padding-left:6px;animation:fadeIn .2s ease-out}
+.log-entry.agent-a{border-color:var(--a)}
+.log-entry.agent-b{border-color:var(--b)}
+.log-tick{color:#ffffff33}
+.log-action{color:#ffffff88}
+.log-reason{color:#ffffff44}
+.log-breakdown{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.bd-tag{font-size:9px;padding:1px 4px;background:#0a1a2a;border:1px solid #1a2a4a}
+
+/* ── Bottom event log ── */
+#bottom-bar{display:flex;gap:0}
+.event-stream{flex:1;overflow-y:auto;padding:8px 12px;font-size:11px;border-right:1px solid var(--border)}
+.event-stream:last-child{border-right:none}
+.event-title{font-size:10px;color:#ffffff33;margin-bottom:6px;letter-spacing:1px}
+.ev{line-height:1.7;animation:fadeIn .15s ease-out}
+.ev .tick{color:#ffffff22}
+.ev .act{color:#ffffff66}
+
+/* ── Win overlay ── */
+#win-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(3,7,18,.92);
+  align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#win-overlay.show{display:flex}
+.win-box{border:1px solid var(--ng);background:var(--panel);padding:32px 48px;text-align:center;
+  box-shadow:0 0 60px rgba(0,255,136,.2)}
+.win-title{font-size:28px;margin-bottom:8px}
+.win-sub{font-size:13px;color:#ffffff66;margin-bottom:20px}
+.win-stats{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;text-align:left}
+.win-stat-label{font-size:10px;color:#ffffff44}
+.win-stat-val{font-size:16px}
+
+/* ── Misc ── */
+.score-progress-wrap{padding:0 12px 10px;border-bottom:1px solid #0a1a2a}
+.progress-label{display:flex;justify-content:space-between;font-size:10px;color:#ffffff44;margin-bottom:4px}
+.progress-track{height:8px;background:#0a1a2a;border-radius:4px;overflow:hidden;display:flex;gap:2px}
+.progress-a{background:var(--a);height:100%;transition:width .4s ease;border-radius:4px 0 0 4px}
+.progress-b{background:var(--b);height:100%;transition:width .4s ease;border-radius:0 4px 4px 0}
+
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--ng);animation:pulse 1s ease infinite;display:inline-block;margin-right:4px}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.blink{animation:blink 1s step-end infinite}
+
+/* scrollbar */
+::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-thumb{background:#1a2a4a}
+
+.tag-a{color:var(--a);text-shadow:0 0 6px var(--a)}
+.tag-b{color:var(--b);text-shadow:0 0 6px var(--b)}
+</style>
+</head>
+<body>
+<div id="crt"></div>
+
+<!-- ── TOP BAR ──────────────────────────────────────── -->
+<div id="app">
+<div id="topbar">
+  <span class="tb-logo">◈ NETGARDEN AI ARENA</span>
+  <span class="tb-phase">PHASE 1 // RULE-BASED</span>
+  <span class="tb-badge">HEURISTIC AGENTS</span>
+  <div class="tb-spacer"></div>
+  <span id="tick-counter">TICK: 0</span>
+  <button class="tb-btn" id="btn-start" onclick="matchStart()">▶ START</button>
+  <button class="tb-btn pause" id="btn-pause" onclick="matchPause()" style="display:none">⏸ PAUSE</button>
+  <button class="tb-btn pause" id="btn-resume" onclick="matchResume()" style="display:none">▶ RESUME</button>
+  <button class="tb-btn danger" onclick="matchReset()">↺ RESET</button>
+</div>
+
+<!-- ── LEFT PANEL: Agent A ──────────────────────────── -->
+<div id="left-panel">
+  <div class="panel-title" style="color:var(--a)">
+    <span>⬡ AGENT ALPHA</span>
+    <span id="a-pos" style="color:#ffffff33">0,0</span>
+  </div>
+
+  <!-- Score card -->
+  <div class="score-card">
+    <div class="sc-header">
+      <span class="sc-name tag-a">ALPHA</span>
+      <span class="sc-score tag-a" id="a-score">0</span>
+    </div>
+    <div class="sc-bar-wrap"><div class="sc-bar" id="a-bar" style="background:var(--a);width:0%"></div></div>
+    <div class="sc-details">
+      <span>🌿 <span id="a-plants">0</span> plants</span>
+      <span>★ <span id="a-rare">0</span> rare</span>
+    </div>
+  </div>
+
+  <!-- Preset buttons -->
+  <div class="panel-section">
+    <div class="section-label">STRATEGY PRESET</div>
+    <div class="preset-grid" id="preset-grid-a"></div>
+  </div>
+
+  <!-- Weight sliders -->
+  <div class="panel-section" style="padding-bottom:0;border-bottom:none">
+    <div class="section-label">HYPERPARAMETERS — ALPHA</div>
+  </div>
+  <div class="slider-group" id="sliders-a"></div>
+</div>
+
+<!-- ── CANVAS ───────────────────────────────────────── -->
+<div id="canvas-wrap">
+  <canvas id="arena"></canvas>
+  <!-- Floating status -->
+  <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:16px;pointer-events:none">
+    <div style="background:rgba(3,7,18,.85);border:1px solid var(--border);padding:4px 14px;font-size:11px;display:flex;gap:8px;align-items:center">
+      <span id="status-dot" class="live-dot" style="background:#ffffff33"></span>
+      <span id="status-text" style="color:#ffffff44">WAITING TO START</span>
+    </div>
+  </div>
+  <!-- Progress bar overlay -->
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:8px 16px;background:rgba(3,7,18,.8);border-top:1px solid var(--border)">
+    <div class="progress-label">
+      <span class="tag-a">ALPHA <span id="a-score-bot">0</span></span>
+      <span style="color:#ffffff33">FIRST TO <span id="win-target">20</span> WINS</span>
+      <span class="tag-b"><span id="b-score-bot">0</span> BETA</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-a" id="prog-a" style="width:0%"></div>
+      <div class="progress-b" id="prog-b" style="width:0%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── RIGHT PANEL: Agent B ─────────────────────────── -->
+<div id="right-panel">
+  <div class="panel-title" style="color:var(--b)">
+    <span>⬡ AGENT BETA</span>
+    <span id="b-pos" style="color:#ffffff33">0,0</span>
+  </div>
+
+  <div class="score-card">
+    <div class="sc-header">
+      <span class="sc-name tag-b">BETA</span>
+      <span class="sc-score tag-b" id="b-score">0</span>
+    </div>
+    <div class="sc-bar-wrap"><div class="sc-bar" id="b-bar" style="background:var(--b);width:0%"></div></div>
+    <div class="sc-details">
+      <span>🌿 <span id="b-plants">0</span> plants</span>
+      <span>★ <span id="b-rare">0</span> rare</span>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="section-label">STRATEGY PRESET</div>
+    <div class="preset-grid" id="preset-grid-b"></div>
+  </div>
+
+  <div class="panel-section" style="padding-bottom:0;border-bottom:none">
+    <div class="section-label">HYPERPARAMETERS — BETA</div>
+  </div>
+  <div class="slider-group" id="sliders-b"></div>
+</div>
+
+<!-- ── BOTTOM: Decision logs ────────────────────────── -->
+<div id="bottom-bar">
+  <div class="event-stream">
+    <div class="event-title">◈ ALPHA DECISION LOG</div>
+    <div id="log-a"></div>
+  </div>
+  <div class="event-stream">
+    <div class="event-title">◈ MATCH EVENTS</div>
+    <div id="log-match"></div>
+  </div>
+  <div class="event-stream">
+    <div class="event-title">◈ BETA DECISION LOG</div>
+    <div id="log-b"></div>
+  </div>
+</div>
+</div><!-- #app -->
+
+<!-- ── WIN OVERLAY ──────────────────────────────────── -->
+<div id="win-overlay">
+  <div class="win-box">
+    <div class="win-title" id="win-title">AGENT ALPHA WINS</div>
+    <div class="win-sub" id="win-sub">Territorial dominance achieved</div>
+    <div class="win-stats">
+      <div>
+        <div class="win-stat-label">ALPHA SCORE</div>
+        <div class="win-stat-val tag-a" id="win-a-score">—</div>
+      </div>
+      <div>
+        <div class="win-stat-label">BETA SCORE</div>
+        <div class="win-stat-val tag-b" id="win-b-score">—</div>
+      </div>
+      <div>
+        <div class="win-stat-label">TOTAL TICKS</div>
+        <div class="win-stat-val" id="win-ticks">—</div>
+      </div>
+      <div>
+        <div class="win-stat-label">PLANTS PLACED</div>
+        <div class="win-stat-val" id="win-plants">—</div>
+      </div>
+    </div>
+    <button class="tb-btn" onclick="matchReset();closeWin()" style="width:100%">↺ PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  CLIENT — game state, renderer, socket, UI
+// ============================================================
+
+const { GRID_W, GRID_H, WIN_SCORE, TERRAIN, PLANTS, WEIGHT_KEYS, PRESETS, COMMON_PLANTS, RARE_PLANTS } = window.CONSTANTS;
+
+// ── State ─────────────────────────────────────────────────
+let worldTiles = {};
+let agentA = null, agentB = null;
+let matchRunning = false, matchTick = 0, winner = null;
+
+const weightsA = { ...PRESETS.balanced.weights };
+const weightsB = { ...PRESETS.territorial.weights };
+
+// ── Socket.io ─────────────────────────────────────────────
+const socket = io();
+
+socket.on('state_sync',   s => applyFullState(s));
+socket.on('match_start',  s => { applyFullState(s); setRunning(true); logMatch('▶ Match started'); });
+socket.on('match_paused', s => { setRunning(false); logMatch('⏸ Match paused'); });
+socket.on('match_resumed',s => { setRunning(true);  logMatch('▶ Match resumed'); });
+socket.on('match_reset',  s => { applyFullState(s); setRunning(false); logMatch('↺ Match reset'); });
+
+socket.on('tick', data => {
+  worldTiles = data.world;
+  agentA = data.agentA;
+  agentB = data.agentB;
+  matchTick = data.tick;
+  updateScoreUI(data);
+  logDecision('a', data.agentA, data.actionA);
+  logDecision('b', data.agentB, data.actionB);
+  renderArena();
+});
+
+socket.on('match_over', data => {
+  winner = data.winner;
+  showWin(data);
+});
+
+socket.on('weights_updated', () => {}); // acknowledged
+
+// ── Match control ─────────────────────────────────────────
+function matchStart()  { socket.emit('match_start'); }
+function matchPause()  { socket.emit('match_pause'); }
+function matchResume() { socket.emit('match_resume'); }
+function matchReset()  { socket.emit('match_reset'); closeWin(); }
+
+function setRunning(r) {
+  matchRunning = r;
+  document.getElementById('btn-start').style.display  = r ? 'none' : '';
+  document.getElementById('btn-pause').style.display  = r ? '' : 'none';
+  document.getElementById('btn-resume').style.display = 'none';
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.style.background = r ? 'var(--ng)' : '#ffffff33';
+  txt.textContent = r ? 'MATCH RUNNING' : (winner ? 'MATCH OVER' : 'PAUSED');
+  txt.style.color = r ? 'var(--ng)' : '#ffffff44';
+}
+
+socket.on('match_paused', () => {
+  setRunning(false);
+  document.getElementById('btn-resume').style.display = '';
+  document.getElementById('btn-pause').style.display  = 'none';
+});
+
+function applyFullState(s) {
+  worldTiles = s.world || {};
+  agentA = s.agentA;
+  agentB = s.agentB;
+  matchTick = s.tick || 0;
+  document.getElementById('win-target').textContent = s.winScore || WIN_SCORE;
+  document.getElementById('tick-counter').textContent = 'TICK: ' + matchTick;
+  renderArena();
+}
+
+// ── Canvas renderer ───────────────────────────────────────
+const canvas = document.getElementById('arena');
+const ctx = canvas.getContext('2d');
+
+const CELL_W = 14, CELL_H = 16;
+const FONT = '13px "Share Tech Mono",monospace';
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight - 48; // bottom progress bar
+}
+window.addEventListener('resize', () => { resizeCanvas(); renderArena(); });
+resizeCanvas();
+
+function renderArena() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#030712';
+  ctx.fillRect(0, 0, W, H);
+  ctx.font = FONT;
+  ctx.textBaseline = 'top';
+
+  // Centre the grid
+  const gridPxW = GRID_W * CELL_W;
+  const gridPxH = GRID_H * CELL_H;
+  const offX = Math.max(0, Math.floor((W - gridPxW) / 2));
+  const offY = Math.max(0, Math.floor((H - gridPxH) / 2));
+
+  const TERRAIN_STYLE = {
+    '.': { fg:'#1a4a1a', bg:'#020a02' },
+    '~': { fg:'#0a3a6a', bg:'#010508' },
+    '#': { fg:'#3a3a3a', bg:'#0a0a0a' },
+    ',': { fg:'#2a3a1a', bg:'#030a02' },
+  };
+
+  for (let ty = 0; ty < GRID_H; ty++) {
+    for (let tx = 0; tx < GRID_W; tx++) {
+      const tile = worldTiles[`${tx},${ty}`];
+      if (!tile) continue;
+      const sx = offX + tx * CELL_W;
+      const sy = offY + ty * CELL_H;
+      const ts = TERRAIN_STYLE[tile.terrain] || TERRAIN_STYLE['.'];
+
+      // BG
+      ctx.fillStyle = ts.bg;
+      ctx.fillRect(sx, sy, CELL_W, CELL_H);
+
+      // Terrain char
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = ts.fg;
+      ctx.fillText(tile.terrain, sx + 1, sy);
+      ctx.globalAlpha = 1;
+
+      // Plant
+      if (tile.plant && PLANTS[tile.plant]) {
+        const pd = PLANTS[tile.plant];
+        const pulse = pd.rare ? 0.72 + 0.28 * Math.sin(matchTick * 0.3 + tx * 0.4 + ty * 0.3) : 1;
+
+        if (pd.rare) {
+          const g = ctx.createRadialGradient(sx+7, sy+8, 0, sx+7, sy+8, 16);
+          g.addColorStop(0, pd.color + '50'); g.addColorStop(1, 'transparent');
+          ctx.globalAlpha = pulse;
+          ctx.fillStyle = g;
+          ctx.fillRect(sx - 14, sy - 12, CELL_W + 28, CELL_H + 24);
+          ctx.globalAlpha = 1;
+        }
+
+        ctx.fillStyle = pd.color;
+        ctx.shadowColor = pd.color;
+        ctx.shadowBlur = pd.rare ? 10 : 4;
+        ctx.globalAlpha = pulse;
+        ctx.fillText(pd.symbol || tile.plant, sx + 1, sy);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+
+        // Owner border tint
+        if (tile.ownerId === 'A') {
+          ctx.strokeStyle = 'rgba(0,255,255,0.2)';
+          ctx.strokeRect(sx, sy, CELL_W, CELL_H);
+        } else if (tile.ownerId === 'B') {
+          ctx.strokeStyle = 'rgba(255,0,255,0.2)';
+          ctx.strokeRect(sx, sy, CELL_W, CELL_H);
+        }
+      }
+    }
+  }
+
+  // Draw agents
+  if (agentA) drawAgent(agentA, offX, offY, 'A');
+  if (agentB) drawAgent(agentB, offX, offY, 'B');
+
+  document.getElementById('tick-counter').textContent = 'TICK: ' + matchTick;
+}
+
+function drawAgent(agent, offX, offY, id) {
+  const sx = offX + agent.x * CELL_W;
+  const sy = offY + agent.y * CELL_H;
+  const col = id === 'A' ? 'var(--a)' : 'var(--b)';
+  const colorHex = id === 'A' ? '#00ffff' : '#ff00ff';
+  const blink = Math.floor(matchTick / 2) % 2 === 0;
+
+  const g = ctx.createRadialGradient(sx+7, sy+8, 0, sx+7, sy+8, 24);
+  g.addColorStop(0, colorHex + '40'); g.addColorStop(1, 'transparent');
+  ctx.fillStyle = g;
+  ctx.fillRect(sx - 18, sy - 12, CELL_W + 36, CELL_H + 24);
+
+  if (blink) {
+    ctx.fillStyle = colorHex;
+    ctx.shadowColor = colorHex;
+    ctx.shadowBlur = 14;
+    ctx.font = FONT;
+    ctx.fillText(id === 'A' ? 'Ω' : 'λ', sx + 1, sy);
+    ctx.shadowBlur = 0;
+  }
+
+  // Name tag
+  ctx.font = '9px "Share Tech Mono"';
+  ctx.fillStyle = colorHex + 'cc';
+  ctx.fillText(id === 'A' ? 'ALPHA' : 'BETA', sx - 8, sy - 11);
+  ctx.font = FONT;
+}
+
+// Animate
+let rafId;
+function animLoop() {
+  if (matchRunning) renderArena();
+  rafId = requestAnimationFrame(animLoop);
+}
+animLoop();
+
+// ── Score UI ──────────────────────────────────────────────
+function updateScoreUI(data) {
+  const a = data.agentA, b = data.agentB;
+  const stats = data.stats || {};
+  const maxScore = WIN_SCORE;
+
+  document.getElementById('a-score').textContent = a.score;
+  document.getElementById('b-score').textContent = b.score;
+  document.getElementById('a-score-bot').textContent = a.score;
+  document.getElementById('b-score-bot').textContent = b.score;
+  document.getElementById('a-plants').textContent = a.plantCount;
+  document.getElementById('b-plants').textContent = b.plantCount;
+  document.getElementById('a-rare').textContent = stats.aRare || 0;
+  document.getElementById('b-rare').textContent = stats.bRare || 0;
+  document.getElementById('a-pos').textContent = `${a.x},${a.y}`;
+  document.getElementById('b-pos').textContent = `${b.x},${b.y}`;
+
+  const aPct = Math.min((a.score / maxScore) * 100, 100);
+  const bPct = Math.min((b.score / maxScore) * 100, 100);
+  document.getElementById('a-bar').style.width = aPct + '%';
+  document.getElementById('b-bar').style.width = bPct + '%';
+
+  // Progress track
+  const total = a.score + b.score || 1;
+  document.getElementById('prog-a').style.width = ((a.score / (maxScore * 2)) * 100) + '%';
+  document.getElementById('prog-b').style.width = ((b.score / (maxScore * 2)) * 100) + '%';
+}
+
+// ── Decision log ──────────────────────────────────────────
+function logDecision(side, agent, action) {
+  if (!action) return;
+  const el = document.getElementById('log-' + side);
+  const div = document.createElement('div');
+  div.className = 'log-entry agent-' + side;
+
+  const bd = action.breakdown || {};
+  const bdHtml = Object.entries(bd).map(([k,v]) =>
+    `<span class="bd-tag" style="border-color:${v > 0.1 ? '#00ff8844':'#1a2a4a'}">${k.slice(0,4)}:${v}</span>`
+  ).join('');
+
+  div.innerHTML = `
+    <span class="log-tick">#${matchTick}</span>
+    <span class="log-action" style="color:${side==='a'?'var(--a)':'var(--b)'}"> ${action.type?.toUpperCase() || ''}</span>
+    <span class="log-reason"> — ${(action.reason||'').slice(0,40)}</span>
+    <div class="log-breakdown">${bdHtml}</div>
+  `;
+  el.insertBefore(div, el.firstChild);
+  // Keep last 30
+  while (el.children.length > 30) el.removeChild(el.lastChild);
+}
+
+function logMatch(msg) {
+  const el = document.getElementById('log-match');
+  const div = document.createElement('div');
+  div.className = 'ev';
+  div.innerHTML = `<span class="tick">[${matchTick}]</span> <span class="act">${msg}</span>`;
+  el.insertBefore(div, el.firstChild);
+  while (el.children.length > 40) el.removeChild(el.lastChild);
+}
+
+// ── Win overlay ───────────────────────────────────────────
+function showWin(data) {
+  const isA = data.winner === 'A';
+  document.getElementById('win-title').textContent = `AGENT ${data.winnerName} WINS`;
+  document.getElementById('win-title').style.color = isA ? 'var(--a)' : 'var(--b)';
+  document.getElementById('win-sub').textContent = isA
+    ? 'ALPHA achieved dominance'
+    : 'BETA achieved dominance';
+  document.getElementById('win-a-score').textContent = data.agentA.score;
+  document.getElementById('win-b-score').textContent = data.agentB.score;
+  document.getElementById('win-ticks').textContent = data.totalTicks;
+  document.getElementById('win-plants').textContent =
+    (data.agentA.plantCount + data.agentB.plantCount) + ' total';
+  document.getElementById('win-overlay').classList.add('show');
+  logMatch(`🏆 ${data.winnerName} WINS at tick ${data.totalTicks}`);
+  setRunning(false);
+}
+
+function closeWin() {
+  document.getElementById('win-overlay').classList.remove('show');
+  winner = null;
+  setRunning(false);
+  document.getElementById('btn-start').style.display = '';
+}
+
+// ── Slider UI ─────────────────────────────────────────────
+function buildSliders(containerId, agentId, weights) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  const col = agentId === 'A' ? '#00ffff' : '#ff00ff';
+
+  WEIGHT_KEYS.forEach(wk => {
+    const row = document.createElement('div');
+    row.className = 'slider-row';
+    const val = (weights[wk.key] ?? 0.5).toFixed(2);
+    row.innerHTML = `
+      <div class="slider-label">
+        <span class="slider-name">${wk.label}</span>
+        <span class="slider-val" id="sv-${agentId}-${wk.key}" style="color:${col}">${val}</span>
+      </div>
+      <input type="range" min="0" max="1" step="0.05"
+        value="${val}"
+        style="--thumb-col:${col}"
+        oninput="onSlider('${agentId}','${wk.key}',this.value)"
+      />
+      <span class="slider-desc">${wk.desc}</span>
+    `;
+    // Style thumb
+    const input = row.querySelector('input');
+    input.style.setProperty('accent-color', col);
+    el.appendChild(row);
+  });
+}
+
+function onSlider(agentId, key, rawVal) {
+  const val = parseFloat(rawVal);
+  const weights = agentId === 'A' ? weightsA : weightsB;
+  weights[key] = val;
+  document.getElementById(`sv-${agentId}-${key}`).textContent = val.toFixed(2);
+  socket.emit('update_weights', { agentId, weights: { ...weights } });
+}
+
+// ── Preset buttons ─────────────────────────────────────────
+function buildPresets(containerId, agentId) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  const col = agentId === 'A' ? 'var(--a)' : 'var(--b)';
+  Object.entries(PRESETS).forEach(([key, preset]) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.style.color = col;
+    btn.textContent = preset.label;
+    btn.onclick = () => applyPreset(agentId, key);
+    el.appendChild(btn);
+  });
+}
+
+function applyPreset(agentId, presetKey) {
+  const preset = PRESETS[presetKey];
+  const weights = agentId === 'A' ? weightsA : weightsB;
+  Object.assign(weights, preset.weights);
+  buildSliders(agentId === 'A' ? 'sliders-a' : 'sliders-b', agentId, weights);
+  socket.emit('update_weights', { agentId, weights: { ...weights } });
+  logMatch(`${agentId === 'A' ? 'ALPHA' : 'BETA'} preset → ${preset.label}`);
+
+  // Highlight active preset
+  const grid = document.getElementById(`preset-grid-${agentId.toLowerCase()}`);
+  grid.querySelectorAll('.preset-btn').forEach((b, i) => {
+    b.classList.toggle('active', Object.keys(PRESETS)[i] === presetKey);
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────
+buildSliders('sliders-a', 'A', weightsA);
+buildSliders('sliders-b', 'B', weightsB);
+buildPresets('preset-grid-a', 'A');
+buildPresets('preset-grid-b', 'B');
+
+logMatch('◈ System online. Awaiting start command.');
+logMatch('◈ Adjust hyperparameters before or during match.');
+</script>
+</body>
+</html>

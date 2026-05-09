@@ -1,0 +1,45 @@
+# ============================================================
+# docker-compose.yml — netgarden-ai-arena / rule-based
+# Usage:
+#   docker compose up --build        # production mode
+#   docker compose up --build dev    # with nodemon hot reload
+# ============================================================
+
+version: '3.9'
+
+services:
+  # ── Production server ────────────────────────────────────
+  arena:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: netgarden-rule-based
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Dev server (hot reload via nodemon) ──────────────────
+  dev:
+    image: node:20-alpine
+    container_name: netgarden-rule-based-dev
+    working_dir: /app/server
+    volumes:
+      - ./server:/app/server
+      - ./shared:/app/shared
+      - ./client:/app/client
+      - /app/server/node_modules   # named volume keeps node_modules
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+    command: sh -c "npm install && npx nodemon index.js"
+    profiles: ["dev"]             # only starts with: docker compose --profile dev up
