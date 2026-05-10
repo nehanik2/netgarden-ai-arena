@@ -1,0 +1,36 @@
+version: '3.9'
+
+services:
+  arena:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: netgarden-q-learning
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","wget","-qO-","http://localhost:3002/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  dev:
+    image: node:20-alpine
+    container_name: netgarden-q-learning-dev
+    working_dir: /app/server
+    volumes:
+      - ./server:/app/server
+      - ./shared:/app/shared
+      - ./client:/app/client
+      - /app/server/node_modules
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - NODE_ENV=development
+    command: sh -c "npm install && npx nodemon index.js"
+    profiles: ["dev"]

@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NETGARDEN AI ARENA — Q-Learning</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<script src="/shared/constants.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ng:#00ff88;--cy:#00ffff;--mg:#ff00ff;--or:#ff8800;--ye:#ffff00;
+  --bg:#030712;--panel:#080f1e;--border:#1a2a4a;
+  --a:#00ffff;--b:#ff00ff;--font:'Share Tech Mono',monospace;
+}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--ng);font-family:var(--font);overflow:hidden;font-size:12px}
+
+/* ── Layout ── */
+#app{display:grid;grid-template-columns:230px 1fr 1fr 230px;grid-template-rows:46px 1fr 160px;height:100vh}
+#topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 14px;
+  background:var(--panel);border-bottom:1px solid var(--border)}
+#left-panel{grid-row:2/4;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#arena-panel{position:relative;overflow:hidden;background:#030712;border-right:1px solid var(--border)}
+#chart-panel{position:relative;overflow:hidden;background:#030712;border-right:1px solid var(--border)}
+#right-panel{grid-row:2/4;display:flex;flex-direction:column;overflow:hidden}
+#bottom-bar{grid-column:2/4;border-top:1px solid var(--border);background:var(--panel);
+  display:flex;overflow:hidden}
+
+/* CRT */
+#crt{pointer-events:none;position:fixed;inset:0;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.1)2px,rgba(0,0,0,.1)4px)}
+
+canvas{display:block;image-rendering:pixelated}
+
+/* ── Topbar ── */
+.tb-logo{color:var(--cy);font-size:13px;letter-spacing:2px;text-shadow:0 0 8px var(--cy)}
+.tb-phase{color:var(--mg);font-size:10px;border:1px solid var(--mg);padding:2px 8px}
+.tb-badge{background:#0a1a2a;border:1px solid var(--border);padding:2px 8px;font-size:10px;color:#ffffff44}
+.tb-spacer{flex:1}
+.tb-sep{color:#1a2a4a}
+.btn{background:transparent;border:1px solid var(--ng);color:var(--ng);font-family:var(--font);
+  font-size:11px;padding:3px 12px;cursor:pointer;transition:all .15s}
+.btn:hover{background:var(--ng);color:var(--bg)}
+.btn:disabled{opacity:.3;cursor:default;pointer-events:none}
+.btn.warn{border-color:var(--or);color:var(--or)}.btn.warn:hover{background:var(--or);color:var(--bg)}
+.btn.danger{border-color:#ff4444;color:#ff4444}.btn.danger:hover{background:#ff4444;color:var(--bg)}
+.btn.active{background:var(--ng);color:var(--bg)}
+#ep-counter{color:#ffffff33;font-size:11px}
+
+/* ── Panels ── */
+.ptitle{padding:7px 11px;font-size:10px;color:#ffffff44;border-bottom:1px solid var(--border);
+  letter-spacing:2px;display:flex;justify-content:space-between;align-items:center}
+.psec{padding:8px 11px;border-bottom:1px solid #0a1a2a}
+.slabel{font-size:9px;color:#ffffff33;margin-bottom:5px;letter-spacing:1px}
+
+/* ── Score cards ── */
+.scard{padding:8px 11px;border-bottom:1px solid #0a1a2a}
+.sc-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.sc-name{font-size:13px;text-shadow:0 0 8px currentColor}
+.sc-score{font-size:18px}
+.sc-bar-wrap{height:3px;background:#0a1a2a;border-radius:2px;margin:3px 0}
+.sc-bar{height:100%;border-radius:2px;transition:width .4s}
+.sc-meta{display:flex;gap:10px;font-size:10px;color:#ffffff44}
+
+/* ── Sliders ── */
+.slider-group{overflow-y:auto;flex:1;padding:8px 11px;display:flex;flex-direction:column;gap:7px}
+.srow{display:flex;flex-direction:column;gap:2px}
+.sl-label{display:flex;justify-content:space-between;font-size:10px}
+.sl-name{color:#ffffff77}
+.sl-val{font-weight:bold}
+input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:#1a2a4a;
+  outline:none;cursor:pointer;border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;
+  border-radius:50%;cursor:pointer}
+.sl-desc{font-size:9px;color:#ffffff28}
+
+/* ── Mode indicator ── */
+#mode-badge{padding:2px 10px;font-size:10px;border:1px solid #1a2a4a;color:#ffffff44}
+
+/* ── Q-stats ── */
+.qstat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 11px;border-bottom:1px solid #0a1a2a}
+.qstat{display:flex;flex-direction:column}
+.qstat-label{font-size:9px;color:#ffffff33}
+.qstat-val{font-size:13px}
+
+/* ── Log ── */
+.log-area{flex:1;overflow-y:auto;padding:6px 11px;display:flex;flex-direction:column;gap:3px}
+.log-row{font-size:10px;line-height:1.6;animation:fadeIn .15s ease-out;border-left:2px solid #1a2a4a;padding-left:5px}
+.log-row.a{border-color:var(--a)}.log-row.b{border-color:var(--b)}
+.lt{color:#ffffff22}.la{color:#ffffff66}
+
+/* ── Bottom bar ── */
+.bstream{flex:1;overflow-y:auto;padding:6px 11px;border-right:1px solid var(--border)}
+.bstream:last-child{border-right:none}
+.bstitle{font-size:9px;color:#ffffff33;margin-bottom:4px;letter-spacing:1px}
+.bev{font-size:10px;line-height:1.7;animation:fadeIn .15s}
+.bev .t{color:#ffffff22}.bev .m{color:#ffffff66}
+
+/* ── Panel labels ── */
+.canvas-label{position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  font-size:10px;color:#ffffff33;pointer-events:none;letter-spacing:1px;z-index:5}
+
+/* ── Win overlay ── */
+#win-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(3,7,18,.92);
+  align-items:center;justify-content:center}
+#win-overlay.show{display:flex}
+.win-box{border:1px solid var(--ng);background:var(--panel);padding:28px 44px;text-align:center;
+  box-shadow:0 0 50px rgba(0,255,136,.18)}
+.win-title{font-size:24px;margin-bottom:6px}
+.win-sub{font-size:12px;color:#ffffff55;margin-bottom:18px}
+.win-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;text-align:left}
+.wlabel{font-size:9px;color:#ffffff44}.wval{font-size:14px}
+
+/* ── Heatmap legend ── */
+#heatmap-legend{position:absolute;bottom:8px;right:8px;background:rgba(3,7,18,.8);
+  border:1px solid var(--border);padding:4px 8px;font-size:9px;color:#ffffff55;z-index:5}
+.legend-bar{width:100px;height:6px;border-radius:3px;margin-top:3px;
+  background:linear-gradient(to right,#030712,#0a2a4a,#00ffff)}
+
+/* ── Progress ── */
+.prog-wrap{position:absolute;bottom:0;left:0;right:0;padding:6px 12px;
+  background:rgba(3,7,18,.85);border-top:1px solid var(--border)}
+.prog-label{display:flex;justify-content:space-between;font-size:10px;color:#ffffff44;margin-bottom:3px}
+.prog-track{height:6px;background:#0a1a2a;border-radius:3px;overflow:hidden;display:flex;gap:1px}
+.prog-a{background:var(--a);height:100%;transition:width .4s;border-radius:3px 0 0 3px}
+.prog-b{background:var(--b);height:100%;transition:width .4s;border-radius:0 3px 3px 0}
+
+/* ── Misc ── */
+.live{width:5px;height:5px;border-radius:50%;background:var(--ng);
+  animation:pulse 1s ease infinite;display:inline-block;margin-right:4px}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.75)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1a2a4a}
+.tag-a{color:var(--a);text-shadow:0 0 6px var(--a)}
+.tag-b{color:var(--b);text-shadow:0 0 6px var(--b)}
+
+/* Epsilon decay display */
+.epsilon-bar{height:3px;background:#1a2a4a;border-radius:2px;margin-top:2px}
+.epsilon-fill{height:100%;background:var(--or);border-radius:2px;transition:width .5s}
+</style>
+</head>
+<body>
+<div id="crt"></div>
+<div id="app">
+
+<!-- ── TOPBAR ─────────────────────────────────────────── -->
+<div id="topbar">
+  <span class="tb-logo">◈ NETGARDEN AI ARENA</span>
+  <span class="tb-phase">PHASE 2 // Q-LEARNING</span>
+  <span class="tb-badge">TABULAR RL</span>
+  <span class="tb-sep">│</span>
+  <div id="mode-badge">MODE: IDLE</div>
+  <span id="ep-counter">EP: 0</span>
+  <div class="tb-spacer"></div>
+  <button class="btn active" id="btn-train" onclick="startTraining()">▶ TRAIN</button>
+  <button class="btn warn"   id="btn-stop"  onclick="stopTraining()" disabled>⏹ STOP</button>
+  <button class="btn"        id="btn-match" onclick="startMatch()">⚔ RUN MATCH</button>
+  <button class="btn danger"               onclick="resetAll()">↺ RESET</button>
+</div>
+
+<!-- ── LEFT: Agent A controls ─────────────────────────── -->
+<div id="left-panel">
+  <div class="ptitle" style="color:var(--a)">
+    <span>⬡ AGENT ALPHA</span>
+    <span id="a-ep" style="color:#ffffff33">ep:0</span>
+  </div>
+  <div class="scard">
+    <div class="sc-row">
+      <span class="sc-name tag-a">ALPHA</span>
+      <span class="sc-score tag-a" id="a-score">0</span>
+    </div>
+    <div class="sc-bar-wrap"><div class="sc-bar" id="a-bar" style="background:var(--a);width:0%"></div></div>
+    <div class="sc-meta">
+      <span>🌿 <span id="a-plants">0</span></span>
+      <span>Q-states: <span id="a-qsize">0</span></span>
+    </div>
+  </div>
+
+  <!-- ε display -->
+  <div class="psec">
+    <div class="slabel">EXPLORATION ε (LIVE)</div>
+    <div style="display:flex;justify-content:space-between;font-size:10px">
+      <span style="color:#ffffff44">random ← → greedy</span>
+      <span id="a-epsilon" class="tag-a">0.30</span>
+    </div>
+    <div class="epsilon-bar"><div class="epsilon-fill" id="a-eps-bar" style="width:30%"></div></div>
+  </div>
+
+  <!-- Hyperparameter sliders -->
+  <div class="psec" style="padding-bottom:0;border-bottom:none">
+    <div class="slabel">HYPERPARAMETERS — ALPHA</div>
+  </div>
+  <div class="slider-group" id="sliders-a"></div>
+</div>
+
+<!-- ── ARENA canvas ───────────────────────────────────── -->
+<div id="arena-panel">
+  <div class="canvas-label" id="arena-label">◈ ARENA — MATCH VIEW</div>
+  <canvas id="arena"></canvas>
+  <div id="heatmap-legend">
+    <div>Q-VALUE HEATMAP</div>
+    <div style="display:flex;justify-content:space-between;font-size:8px;margin-top:2px">
+      <span>LOW</span><span>HIGH</span>
+    </div>
+    <div class="legend-bar"></div>
+  </div>
+  <!-- Progress bar -->
+  <div class="prog-wrap">
+    <div class="prog-label">
+      <span class="tag-a">ALPHA <span id="a-score-prog">0</span></span>
+      <span style="color:#ffffff33">FIRST TO <span id="win-target">25</span></span>
+      <span class="tag-b"><span id="b-score-prog">0</span> BETA</span>
+    </div>
+    <div class="prog-track">
+      <div class="prog-a" id="prog-a" style="width:0%"></div>
+      <div class="prog-b" id="prog-b" style="width:0%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CHART canvas ───────────────────────────────────── -->
+<div id="chart-panel">
+  <div class="canvas-label">◈ REWARD CURVE — EPISODE HISTORY</div>
+  <canvas id="reward-chart"></canvas>
+</div>
+
+<!-- ── RIGHT: Agent B controls ────────────────────────── -->
+<div id="right-panel">
+  <div class="ptitle" style="color:var(--b)">
+    <span>⬡ AGENT BETA</span>
+    <span id="b-ep" style="color:#ffffff33">ep:0</span>
+  </div>
+  <div class="scard">
+    <div class="sc-row">
+      <span class="sc-name tag-b">BETA</span>
+      <span class="sc-score tag-b" id="b-score">0</span>
+    </div>
+    <div class="sc-bar-wrap"><div class="sc-bar" id="b-bar" style="background:var(--b);width:0%"></div></div>
+    <div class="sc-meta">
+      <span>🌿 <span id="b-plants">0</span></span>
+      <span>Q-states: <span id="b-qsize">0</span></span>
+    </div>
+  </div>
+
+  <div class="psec">
+    <div class="slabel">EXPLORATION ε (LIVE)</div>
+    <div style="display:flex;justify-content:space-between;font-size:10px">
+      <span style="color:#ffffff44">random ← → greedy</span>
+      <span id="b-epsilon" class="tag-b">0.30</span>
+    </div>
+    <div class="epsilon-bar"><div class="epsilon-fill" id="b-eps-bar" style="width:30%;background:var(--b)"></div></div>
+  </div>
+
+  <div class="psec" style="padding-bottom:0;border-bottom:none">
+    <div class="slabel">HYPERPARAMETERS — BETA</div>
+  </div>
+  <div class="slider-group" id="sliders-b"></div>
+</div>
+
+<!-- ── BOTTOM: event logs ─────────────────────────────── -->
+<div id="bottom-bar">
+  <div class="bstream">
+    <div class="bstitle">◈ ALPHA LAST Q-UPDATE</div>
+    <div id="log-a"></div>
+  </div>
+  <div class="bstream">
+    <div class="bstitle">◈ TRAINING EVENTS</div>
+    <div id="log-train"></div>
+  </div>
+  <div class="bstream">
+    <div class="bstitle">◈ BETA LAST Q-UPDATE</div>
+    <div id="log-b"></div>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<!-- ── WIN OVERLAY ── -->
+<div id="win-overlay">
+  <div class="win-box">
+    <div class="win-title" id="win-title">AGENT ALPHA WINS</div>
+    <div class="win-sub" id="win-sub">Policy converged to victory</div>
+    <div class="win-grid">
+      <div><div class="wlabel">ALPHA SCORE</div><div class="wval tag-a" id="w-a">—</div></div>
+      <div><div class="wlabel">BETA SCORE</div><div class="wval tag-b" id="w-b">—</div></div>
+      <div><div class="wlabel">MATCH TICKS</div><div class="wval" id="w-ticks">—</div></div>
+      <div><div class="wlabel">EPISODES TRAINED</div><div class="wval" id="w-ep">—</div></div>
+    </div>
+    <button class="btn" onclick="closeWin();resetAll()" style="width:100%">↺ RESET & RETRAIN</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+//  CLIENT — Q-Learning dashboard
+//  Renders: arena (game + heatmap overlay), reward chart
+// ============================================================
+
+const { GRID_W, GRID_H, WIN_SCORE, TERRAIN, PLANTS, QL_DEFAULTS } = window.CONSTANTS;
+
+// ── State ─────────────────────────────────────────────────
+let worldTiles = {};
+let agentA = null, agentB = null;
+let heatmapA = null, heatmapB = null;  // flat arrays GRID_W*GRID_H
+let totalEpisodes = 0;
+let mode = 'idle';
+let matchTick = 0;
+let showHeatmap = true;  // toggle
+
+// ── Socket ─────────────────────────────────────────────────
+const socket = io();
+
+socket.on('state_sync', s => applyFull(s));
+socket.on('full_reset', s => { applyFull(s); logTrain('↺ All state reset'); });
+
+socket.on('mode_change', ({ mode: m }) => {
+  mode = m;
+  updateModeBadge();
+  logTrain(`MODE → ${m.toUpperCase()}`);
+});
+
+socket.on('training_update', data => {
+  totalEpisodes = data.totalEpisodes;
+  agentA = data.agentA;
+  agentB = data.agentB;
+  if (data.heatmapA) heatmapA = data.heatmapA;
+  if (data.heatmapB) heatmapB = data.heatmapB;
+  document.getElementById('ep-counter').textContent = 'EP: ' + totalEpisodes;
+  updateAgentUI();
+  renderRewardChart();
+  if (data.heatmapA) renderArena();  // redraw heatmap
+});
+
+socket.on('match_start', s => {
+  worldTiles = s.world;
+  agentA = s.agentA; agentB = s.agentB;
+  matchTick = s.tick;
+  document.getElementById('win-target').textContent = s.winScore;
+  renderArena();
+  logTrain('⚔ Match started — agents using learned policy');
+});
+
+socket.on('match_tick', data => {
+  worldTiles = data.world;
+  agentA = data.agentA; agentB = data.agentB;
+  matchTick = data.tick;
+  if (data.heatmapA) heatmapA = data.heatmapA;
+  if (data.heatmapB) heatmapB = data.heatmapB;
+  updateAgentUI();
+  updateProgress();
+  renderArena();
+  if (data.actionA?.action) logQ('a', data.agentA, data.actionA);
+  if (data.actionB?.action) logQ('b', data.agentB, data.actionB);
+  if (data.winner) showWin(data);
+});
+
+socket.on('match_over', data => showWin(data));
+socket.on('params_updated', () => {});
+
+// ── Controls ───────────────────────────────────────────────
+function startTraining() {
+  socket.emit('start_training');
+  setButtons('training');
+}
+function stopTraining() {
+  socket.emit('stop_training');
+  setButtons('idle');
+}
+function startMatch() {
+  socket.emit('start_match');
+  setButtons('match');
+}
+function resetAll() {
+  socket.emit('reset_all');
+  heatmapA = null; heatmapB = null;
+  worldTiles = {};
+  setButtons('idle');
+  closeWin();
+  clearRewardChart();
+}
+
+function setButtons(m) {
+  document.getElementById('btn-train').disabled = m === 'training';
+  document.getElementById('btn-stop').disabled  = m !== 'training';
+  document.getElementById('btn-match').disabled = m === 'match';
+}
+
+function updateModeBadge() {
+  const colors = { idle:'#ffffff44', training:'var(--ng)', match:'var(--or)' };
+  const el = document.getElementById('mode-badge');
+  el.textContent = 'MODE: ' + mode.toUpperCase();
+  el.style.color = colors[mode] || '#ffffff44';
+  el.style.borderColor = colors[mode] || '#1a2a4a';
+}
+
+function applyFull(s) {
+  mode = s.mode || 'idle';
+  totalEpisodes = s.totalEpisodes || 0;
+  agentA = s.agentA;
+  agentB = s.agentB;
+  worldTiles = s.world || {};
+  document.getElementById('ep-counter').textContent = 'EP: ' + totalEpisodes;
+  document.getElementById('win-target').textContent = s.winScore || WIN_SCORE;
+  updateAgentUI();
+  updateModeBadge();
+  renderArena();
+  renderRewardChart();
+}
+
+// ── Agent UI update ────────────────────────────────────────
+function updateAgentUI() {
+  if (!agentA || !agentB) return;
+
+  // Scores
+  ['a','b'].forEach(side => {
+    const ag = side === 'a' ? agentA : agentB;
+    document.getElementById(`${side}-score`).textContent = ag.score || 0;
+    document.getElementById(`${side}-plants`).textContent = ag.plantCount || 0;
+    document.getElementById(`${side}-qsize`).textContent = ag.qTableSize || 0;
+    document.getElementById(`${side}-ep`).textContent = 'ep:' + (ag.totalEpisodes || 0);
+
+    const eps = (ag.epsilon ?? 0.3);
+    document.getElementById(`${side}-epsilon`).textContent = eps.toFixed(3);
+    document.getElementById(`${side}-eps-bar`).style.width = (eps * 100) + '%';
+
+    const pct = Math.min(((ag.score || 0) / WIN_SCORE) * 100, 100);
+    document.getElementById(`${side}-bar`).style.width = pct + '%';
+  });
+
+  updateProgress();
+}
+
+function updateProgress() {
+  if (!agentA || !agentB) return;
+  const W = WIN_SCORE * 2;
+  document.getElementById('a-score-prog').textContent = agentA.score || 0;
+  document.getElementById('b-score-prog').textContent = agentB.score || 0;
+  document.getElementById('prog-a').style.width = (((agentA.score||0) / W) * 100) + '%';
+  document.getElementById('prog-b').style.width = (((agentB.score||0) / W) * 100) + '%';
+}
+
+// ── Arena canvas ───────────────────────────────────────────
+const arenaCanvas = document.getElementById('arena');
+const actx = arenaCanvas.getContext('2d');
+const CELL_W = 13, CELL_H = 15;
+const FONT_MAIN = '12px "Share Tech Mono",monospace';
+
+function resizeArena() {
+  const panel = document.getElementById('arena-panel');
+  arenaCanvas.width  = panel.clientWidth;
+  arenaCanvas.height = panel.clientHeight - 40; // prog bar
+}
+
+function renderArena() {
+  const W = arenaCanvas.width, H = arenaCanvas.height;
+  actx.fillStyle = '#030712';
+  actx.fillRect(0, 0, W, H);
+  actx.font = FONT_MAIN;
+  actx.textBaseline = 'top';
+
+  const gridPxW = GRID_W * CELL_W;
+  const gridPxH = GRID_H * CELL_H;
+  const offX = Math.max(0, Math.floor((W - gridPxW) / 2));
+  const offY = Math.max(0, Math.floor((H - gridPxH) / 2));
+
+  // Compute heatmap range for normalization
+  let hmMin = Infinity, hmMax = -Infinity;
+  const activeHeatmap = agentA ? heatmapA : null;
+  if (activeHeatmap && showHeatmap) {
+    for (const v of activeHeatmap) {
+      if (v < hmMin) hmMin = v;
+      if (v > hmMax) hmMax = v;
+    }
+  }
+  const hmRange = hmMax - hmMin || 1;
+
+  const TERRAIN_STYLE = {
+    '.': { fg:'#1a4a1a', bg:'#020a02' },
+    '~': { fg:'#0a3a6a', bg:'#010508' },
+    '#': { fg:'#3a3a3a', bg:'#0a0a0a' },
+    ',': { fg:'#2a3a1a', bg:'#030a02' },
+  };
+
+  for (let ty = 0; ty < GRID_H; ty++) {
+    for (let tx = 0; tx < GRID_W; tx++) {
+      const tile = worldTiles[`${tx},${ty}`];
+      if (!tile) continue;
+      const sx = offX + tx * CELL_W;
+      const sy = offY + ty * CELL_H;
+      const ts = TERRAIN_STYLE[tile.terrain] || TERRAIN_STYLE['.'];
+
+      // ── Heatmap underlay ──
+      if (activeHeatmap && showHeatmap && mode !== 'idle') {
+        const idx = ty * GRID_W + tx;
+        const norm = (activeHeatmap[idx] - hmMin) / hmRange; // 0..1
+        // Map to colour: dark blue → cyan
+        const r = Math.floor(norm * 10);
+        const g = Math.floor(norm * 160);
+        const b = Math.floor(40 + norm * 215);
+        actx.fillStyle = `rgb(${r},${g},${b})`;
+        actx.globalAlpha = 0.35;
+        actx.fillRect(sx, sy, CELL_W, CELL_H);
+        actx.globalAlpha = 1;
+      }
+
+      // Terrain BG
+      actx.fillStyle = ts.bg;
+      actx.globalAlpha = 0.6;
+      actx.fillRect(sx, sy, CELL_W, CELL_H);
+      actx.globalAlpha = 0.5;
+      actx.fillStyle = ts.fg;
+      actx.fillText(tile.terrain, sx+1, sy);
+      actx.globalAlpha = 1;
+
+      // Plant
+      if (tile.plant && PLANTS[tile.plant]) {
+        const pd = PLANTS[tile.plant];
+        const pulse = pd.rare ? 0.75 + 0.25 * Math.sin(matchTick * 0.3 + tx * 0.4) : 1;
+        if (pd.rare) {
+          const g = actx.createRadialGradient(sx+6,sy+7,0,sx+6,sy+7,14);
+          g.addColorStop(0, pd.color+'44'); g.addColorStop(1,'transparent');
+          actx.globalAlpha = pulse;
+          actx.fillStyle = g;
+          actx.fillRect(sx-12,sy-10,CELL_W+24,CELL_H+20);
+        }
+        actx.fillStyle = pd.color;
+        actx.shadowColor = pd.color;
+        actx.shadowBlur = pd.rare ? 9 : 3;
+        actx.globalAlpha = pulse;
+        actx.fillText(tile.plant, sx+1, sy);
+        actx.shadowBlur = 0;
+        actx.globalAlpha = 1;
+
+        // Ownership border
+        if (tile.ownerId === 'A') {
+          actx.strokeStyle = 'rgba(0,255,255,0.18)';
+          actx.strokeRect(sx, sy, CELL_W, CELL_H);
+        } else if (tile.ownerId === 'B') {
+          actx.strokeStyle = 'rgba(255,0,255,0.18)';
+          actx.strokeRect(sx, sy, CELL_W, CELL_H);
+        }
+      }
+    }
+  }
+
+  // Draw agents
+  if (agentA) drawAgent(agentA, offX, offY, 'A');
+  if (agentB) drawAgent(agentB, offX, offY, 'B');
+
+  // Heatmap legend update
+  document.getElementById('heatmap-legend').style.display =
+    (showHeatmap && mode !== 'idle') ? 'block' : 'none';
+}
+
+function drawAgent(agent, offX, offY, id) {
+  const sx = offX + agent.x * CELL_W;
+  const sy = offY + agent.y * CELL_H;
+  const col = id === 'A' ? '#00ffff' : '#ff00ff';
+  const blink = Math.floor(matchTick / 2) % 2 === 0;
+
+  const g = actx.createRadialGradient(sx+6,sy+7,0,sx+6,sy+7,20);
+  g.addColorStop(0, col+'35'); g.addColorStop(1,'transparent');
+  actx.fillStyle = g;
+  actx.fillRect(sx-16,sy-10,CELL_W+32,CELL_H+20);
+
+  if (blink || mode === 'training') {
+    actx.fillStyle = col;
+    actx.shadowColor = col;
+    actx.shadowBlur = 12;
+    actx.font = FONT_MAIN;
+    actx.fillText(id === 'A' ? 'Ω' : 'λ', sx+1, sy);
+    actx.shadowBlur = 0;
+  }
+
+  actx.font = '8px "Share Tech Mono"';
+  actx.fillStyle = col + 'aa';
+  actx.fillText(id === 'A' ? 'ALPHA' : 'BETA', sx-7, sy-10);
+  actx.font = FONT_MAIN;
+}
+
+// ── Reward chart ───────────────────────────────────────────
+const chartCanvas = document.getElementById('reward-chart');
+const cctx = chartCanvas.getContext('2d');
+
+function resizeChart() {
+  const panel = document.getElementById('chart-panel');
+  chartCanvas.width  = panel.clientWidth;
+  chartCanvas.height = panel.clientHeight;
+}
+
+function clearRewardChart() {
+  cctx.fillStyle = '#030712';
+  cctx.fillRect(0, 0, chartCanvas.width, chartCanvas.height);
+}
+
+function renderRewardChart() {
+  const W = chartCanvas.width, H = chartCanvas.height;
+  cctx.fillStyle = '#030712';
+  cctx.fillRect(0, 0, W, H);
+
+  const rewA = agentA?.episodeRewards ?? [];
+  const rewB = agentB?.episodeRewards ?? [];
+  if (rewA.length < 2 && rewB.length < 2) {
+    cctx.fillStyle = '#ffffff22';
+    cctx.font = '11px "Share Tech Mono"';
+    cctx.textBaseline = 'middle';
+    cctx.fillText('Start training to see reward curve...', W/2 - 130, H/2);
+    return;
+  }
+
+  const PAD = { top: 28, right: 20, bottom: 36, left: 48 };
+  const CW = W - PAD.left - PAD.right;
+  const CH = H - PAD.top  - PAD.bottom;
+
+  // Compute range
+  const allVals = [...rewA, ...rewB];
+  const minV = Math.min(...allVals);
+  const maxV = Math.max(...allVals);
+  const range = maxV - minV || 1;
+
+  const toX = (i, len) => PAD.left + (i / (len - 1)) * CW;
+  const toY = (v) => PAD.top + CH - ((v - minV) / range) * CH;
+
+  // Grid lines
+  cctx.strokeStyle = '#0a1a2a';
+  cctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.top + (CH / 4) * i;
+    cctx.beginPath(); cctx.moveTo(PAD.left, y); cctx.lineTo(PAD.left + CW, y); cctx.stroke();
+    const val = maxV - (range / 4) * i;
+    cctx.fillStyle = '#ffffff33';
+    cctx.font = '9px "Share Tech Mono"';
+    cctx.textBaseline = 'middle';
+    cctx.textAlign = 'right';
+    cctx.fillText(val.toFixed(1), PAD.left - 4, y);
+  }
+
+  // Moving average helper (window=10)
+  function movAvg(arr, w=10) {
+    return arr.map((_, i) => {
+      const slice = arr.slice(Math.max(0,i-w+1), i+1);
+      return slice.reduce((s,v)=>s+v,0)/slice.length;
+    });
+  }
+
+  // Plot raw (faint) + smoothed
+  const drawLine = (data, color, smooth=false) => {
+    if (data.length < 2) return;
+    const smoothed = smooth ? movAvg(data) : data;
+    cctx.beginPath();
+    cctx.strokeStyle = color;
+    cctx.lineWidth = smooth ? 2 : 1;
+    cctx.globalAlpha = smooth ? 0.9 : 0.25;
+    smoothed.forEach((v, i) => {
+      const x = toX(i, smoothed.length), y = toY(v);
+      i === 0 ? cctx.moveTo(x,y) : cctx.lineTo(x,y);
+    });
+    cctx.stroke();
+    cctx.globalAlpha = 1;
+  };
+
+  drawLine(rewA, '#00ffff', false);
+  drawLine(rewA, '#00ffff', true);
+  drawLine(rewB, '#ff00ff', false);
+  drawLine(rewB, '#ff00ff', true);
+
+  // Axes
+  cctx.strokeStyle = '#1a2a4a';
+  cctx.lineWidth = 1;
+  cctx.beginPath();
+  cctx.moveTo(PAD.left, PAD.top);
+  cctx.lineTo(PAD.left, PAD.top + CH);
+  cctx.lineTo(PAD.left + CW, PAD.top + CH);
+  cctx.stroke();
+
+  // Labels
+  cctx.fillStyle = '#ffffff33';
+  cctx.font = '9px "Share Tech Mono"';
+  cctx.textAlign = 'center';
+  cctx.textBaseline = 'top';
+  cctx.fillText('EPISODE', PAD.left + CW/2, PAD.top + CH + 18);
+  cctx.fillText(`${rewA.length || rewB.length} eps`, PAD.left + CW - 10, PAD.top + CH + 18);
+
+  // Legend
+  cctx.textAlign = 'left';
+  cctx.fillStyle = '#00ffff'; cctx.fillText('— ALPHA', PAD.left + 4, 8);
+  cctx.fillStyle = '#ff00ff'; cctx.fillText('— BETA',  PAD.left + 80, 8);
+  cctx.fillStyle = '#ffffff33'; cctx.fillText('(faint=raw, bold=avg10)', PAD.left + 160, 8);
+
+  // Zero line
+  if (minV < 0 && maxV > 0) {
+    const zy = toY(0);
+    cctx.setLineDash([4,4]);
+    cctx.strokeStyle = '#ffffff22';
+    cctx.lineWidth = 1;
+    cctx.beginPath(); cctx.moveTo(PAD.left,zy); cctx.lineTo(PAD.left+CW,zy); cctx.stroke();
+    cctx.setLineDash([]);
+  }
+}
+
+// ── Q-update log ───────────────────────────────────────────
+function logQ(side, agent, qData) {
+  const el = document.getElementById('log-' + side);
+  const div = document.createElement('div');
+  div.className = 'bev';
+  div.innerHTML = `
+    <span class="t">[${matchTick}]</span>
+    <span class="m" style="color:${side==='a'?'var(--a)':'var(--b)'}"> ${(qData.action||'').toUpperCase()}</span>
+    <span class="m" style="color:#ffffff44"> r=${(qData.reward??0).toFixed(2)}</span>
+    <span class="m" style="color:#ffffff33"> Q:${(qData.oldQ??0).toFixed(3)}→${(qData.newQ??0).toFixed(3)}</span>
+  `;
+  el.insertBefore(div, el.firstChild);
+  while (el.children.length > 20) el.removeChild(el.lastChild);
+}
+
+function logTrain(msg) {
+  const el = document.getElementById('log-train');
+  const div = document.createElement('div');
+  div.className = 'bev';
+  div.innerHTML = `<span class="t">[${totalEpisodes}]</span> <span class="m">${msg}</span>`;
+  el.insertBefore(div, el.firstChild);
+  while (el.children.length > 40) el.removeChild(el.lastChild);
+}
+
+// ── Win overlay ────────────────────────────────────────────
+function showWin(data) {
+  const isA = data.winner === 'A';
+  document.getElementById('win-title').textContent = `AGENT ${isA?'ALPHA':'BETA'} WINS`;
+  document.getElementById('win-title').style.color = isA ? 'var(--a)' : 'var(--b)';
+  document.getElementById('win-sub').textContent = `Policy learned over ${totalEpisodes} episodes`;
+  document.getElementById('w-a').textContent = data.agentA?.score ?? '—';
+  document.getElementById('w-b').textContent = data.agentB?.score ?? '—';
+  document.getElementById('w-ticks').textContent = data.totalTicks ?? matchTick;
+  document.getElementById('w-ep').textContent = totalEpisodes;
+  document.getElementById('win-overlay').classList.add('show');
+  setButtons('idle');
+  logTrain(`🏆 ${isA?'ALPHA':'BETA'} WINS — match over`);
+}
+function closeWin() { document.getElementById('win-overlay').classList.remove('show'); }
+
+// ── Sliders ────────────────────────────────────────────────
+const SLIDER_DEFS = [
+  { key:'alpha',        label:'Learning Rate α',    min:0.01, max:1,   step:0.01, desc:'How fast Q-values update per experience' },
+  { key:'gamma',        label:'Discount Factor γ',  min:0.1,  max:0.99,step:0.01, desc:'How much future rewards matter vs immediate' },
+  { key:'epsilon',      label:'Exploration ε',      min:0,    max:1,   step:0.01, desc:'Probability of random action (exploration)' },
+  { key:'epsilonDecay', label:'ε Decay Rate',       min:0.9,  max:1,   step:0.001,desc:'Multiplied with ε each episode (closer to 1 = slower decay)' },
+];
+
+function buildSliders(containerId, agentId, defaults) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  const col = agentId === 'A' ? '#00ffff' : '#ff00ff';
+
+  SLIDER_DEFS.forEach(def => {
+    const val = defaults[def.key] ?? 0.5;
+    const row = document.createElement('div');
+    row.className = 'srow';
+    row.innerHTML = `
+      <div class="sl-label">
+        <span class="sl-name">${def.label}</span>
+        <span class="sl-val" id="sv-${agentId}-${def.key}" style="color:${col}">${val.toFixed(3)}</span>
+      </div>
+      <input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${val}"
+        style="accent-color:${col}"
+        oninput="onSlider('${agentId}','${def.key}',this.value)"/>
+      <span class="sl-desc">${def.desc}</span>
+    `;
+    el.appendChild(row);
+  });
+}
+
+function onSlider(agentId, key, rawVal) {
+  const val = parseFloat(rawVal);
+  document.getElementById(`sv-${agentId}-${key}`).textContent = val.toFixed(3);
+  socket.emit('update_params', { agentId, params: { [key]: val } });
+  logTrain(`${agentId==='A'?'ALPHA':'BETA'} ${key} → ${val.toFixed(3)}`);
+}
+
+// ── Resize & animation ─────────────────────────────────────
+function resizeAll() {
+  resizeArena();
+  resizeChart();
+  renderArena();
+  renderRewardChart();
+}
+window.addEventListener('resize', resizeAll);
+
+// RAF loop for smooth arena animation during match
+let lastRaf = 0;
+function rafLoop(ts) {
+  if (ts - lastRaf > 80) {  // ~12fps is enough for ASCII
+    if (mode === 'match') renderArena();
+    lastRaf = ts;
+  }
+  requestAnimationFrame(rafLoop);
+}
+requestAnimationFrame(rafLoop);
+
+// ── Init ───────────────────────────────────────────────────
+buildSliders('sliders-a', 'A', QL_DEFAULTS);
+buildSliders('sliders-b', 'B', { ...QL_DEFAULTS, epsilon: 0.4 });
+resizeAll();
+updateModeBadge();
+logTrain('◈ System online.');
+logTrain('◈ Click TRAIN to start Q-learning. Chart updates every 10 episodes.');
+logTrain('◈ Click RUN MATCH to watch learned policies compete.');
+</script>
+</body>
+</html>
